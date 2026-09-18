@@ -1,0 +1,25 @@
+{
+  "asset": {
+    "id": "sample-web-staging",
+    "environment": "staging",
+    "criticality": "high",
+    "profile": "linux",
+    "services": ["nginx"],
+    "runbooks": ["runbooks/nginx.md"],
+    "credentials": {"deploy": "SAMPLE_WEB_DEPLOY"}
+  },
+  "runbook": [{
+    "path": "runbooks/nginx.md",
+    "text": "# Nginx service runbook\n\nThis runbook applies only to the sample staging asset. It contains no production hostname, address, account, or credential.\n\n1. Confirm the asset and maintenance approval before acting.\n2. Validate configuration with `nginx -t`.\n3. Inspect status with `systemctl status nginx --no-pager`.\n4. Reload with `systemctl reload nginx` only after validation succeeds.\n5. Record asset ID, phase, outcome, and hashes in the redacted audit log; do not record command output or secrets.\n",
+    "untrusted": true
+  }],
+  "terminalDisabled": "Error: SRE desktop control is disabled. Operator must enable it in the profile patch.",
+  "connections": {
+    "connections": [
+      { "id": "web-test", "name": "测试控制台", "type": "webshell", "url": "https://example.invalid/#/shell", "username": "operator@example.invalid", "notes": "测试 VPN", "profile": "linux", "passwordConfigured": true },
+      { "id": "ssh-test", "name": "测试 SSH", "type": "ssh", "host": "ssh.example.invalid", "port": 22, "username": "operator", "notes": "测试内网", "passwordConfigured": true }
+    ],
+    "webshellRegistrationRequired": false,
+    "sshExecutionSupported": false
+  }
+}

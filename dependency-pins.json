@@ -1,0 +1,8 @@
+{
+  "dsh": {"version": "0.1.6-alpha.2", "commit": "ddefc45fbc7f8e46dd73185e68295696d1297887"},
+  "computer-user": {
+    "version": "0.3.6", "commit": "2fbf383b49fe08e466d4d1caba659fb42b61de6b",
+    "inputSha256": "df6c16770bf9555e1fa450dac617496c1ae48a22aaf7c6b3eb00850905717ce9",
+    "captureSha256": "c99ededa1e10a12ed5e0bfc78912b4c85820880a1092e0b221c2b83688cdef5a"
+  }
+}

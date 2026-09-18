@@ -1,0 +1,4 @@
+[
+  { "id": "web-test", "name": "测试控制台", "type": "webshell", "url": "https://example.invalid/#/shell", "username": "operator@example.invalid", "password": "fixture-only-web-password", "notes": "测试 VPN", "profile": "linux" },
+  { "id": "ssh-test", "name": "测试 SSH", "type": "ssh", "host": "ssh.example.invalid", "port": 22, "username": "operator", "password": "fixture-only-ssh-password", "notes": "测试内网" }
+]

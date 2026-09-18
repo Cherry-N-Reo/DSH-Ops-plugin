@@ -1,0 +1,15 @@
+lib/
+node_modules/
+.runtime/
+operations/connections.json
+operations/connections.yaml
+operations/connections.yml
+operations/connections.tsv
+operations/connections.csv
+.env
+.env.*
+*.log
+# Host-specific configuration records may contain real infrastructure addresses.
+CONFIGURATION.md
+CONFIGURATION.zh.md
+CONFIGURATION.i18n.yaml

@@ -1,0 +1,5 @@
+- id: sre-webshell
+  config:
+    operationsDir: !!js process.env.DSH_COMPOSITION_OPERATIONS_DIR
+    runtimeDir: !!js process.env.DSH_COMPOSITION_SESSION_ROOT
+    enabled: true

@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve the reviewed backend script bytes used by dependency-pins.json.
+third-party/computer-user/*.ps1 -text

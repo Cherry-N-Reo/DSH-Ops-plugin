@@ -1,0 +1,12 @@
+- id: skill-filesystem
+  config:
+    includeDefaultRoots: false
+    customSkillDirs: ['D:/Program Files/DSH/sre-webshell/operations/.dsh/skills']
+    watchFollowSymlinks: false
+- insert:
+    - id: sre-webshell
+      name: 'D:/Program Files/DSH/sre-webshell/lib/index.js'
+      config:
+        operationsDir: 'D:/Program Files/DSH/sre-webshell/operations'
+        runtimeDir: 'D:/Program Files/DSH/sre-webshell/.runtime'
+        enabled: false

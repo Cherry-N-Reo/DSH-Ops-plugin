@@ -1,0 +1,19 @@
+- id: agent-default-model
+  config:
+    provider: composition-mock
+    model: composition-mock
+- id: session-title-llm
+  disabled: true
+- id: sre-webshell
+  config:
+    operationsDir: !!js process.env.DSH_COMPOSITION_OPERATIONS_DIR
+    runtimeDir: !!js process.env.DSH_COMPOSITION_SESSION_ROOT
+    connectionsFile: !!js process.env.DSH_COMPOSITION_CONNECTIONS_FILE
+    enabled: false
+- id: session-persistence-jsonl
+  config:
+    root: !!js process.env.DSH_COMPOSITION_SESSION_ROOT
+    compression: none
+- insert:
+    - id: composition-mock-llm
+      name: ./composition-mock-llm.mjs

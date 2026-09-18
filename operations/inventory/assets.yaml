@@ -1,0 +1,17 @@
+assets:
+  - id: sample-web-staging
+    environment: staging
+    criticality: high
+    profile: linux
+    services: [nginx]
+    runbooks: [runbooks/nginx.md]
+    credentials:
+      deploy: SAMPLE_WEB_DEPLOY
+  - id: sample-db-staging
+    environment: staging
+    criticality: medium
+    profile: linux
+    services: [mysql]
+    runbooks: [runbooks/mysql.md]
+    credentials:
+      readonly: SAMPLE_DB_READONLY

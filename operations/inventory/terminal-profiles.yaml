@@ -1,0 +1,6 @@
+profiles:
+  - id: linux
+    shell: posix
+    input: unicode_then_keyboard
+    output: visual
+    pagerPatterns: ['--More--', '(END)']

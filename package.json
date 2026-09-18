@@ -1,0 +1,26 @@
+{
+  "name": "dsh-sre-webshell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "files": ["lib", "scripts", "third-party", "operations", "cordis.patch.yml", "README.md", "README.zh.md", "README.i18n.yaml", "ACCEPTANCE.md", "dependency-pins.json", "THIRD_PARTY_NOTICES.md"],
+  "engines": {"node": "^22.19.0 || >=24.0.0"},
+  "os": ["win32"],
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "scripts": {
+    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
+    "test": "node --import ../node_modules/tsx/dist/loader.mjs --test tests/*.test.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-tools": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-user-approval": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-credentials": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-attachment": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-llm": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-util-values": "0.1.6-alpha.2",
+    "@deepseek-ai/schemastery": "3.18.2"
+  },
+  "dependencies": {"yaml": "2.9.0"}
+}
