@@ -7,6 +7,8 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
+# 让Deepseek替你面对烦人的WebShell运维
+
 ## 概述
 
 通过自然语言请求，让 DeepSeek Harness（DSH）操作已登录的浏览器 WebShell。智能体选中配置的标签页，看截图、输入命令，核对回显后才按回车。普通输入和输出读取无需剪贴板。命令策略、审批和元数据审计约束运维操作。本 Windows 源码版本是 Ops 运维助手，不是独立应用，也不是完整的 SRE 平台。

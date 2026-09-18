@@ -7,6 +7,8 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
+# Let DeepSeek Handle Tedious WebShell Operations for You
+
 ## Summary
 
 Use natural-language requests to operate an already logged-in browser WebShell through DeepSeek Harness (DSH). The agent selects the configured tab, reads screenshots, types commands and verifies their echo before Enter. Normal input and output reading need no clipboard. Command policy, approvals and metadata audit restrict operations. This Windows source release is an Ops assistant, not a standalone application or a complete SRE platform.
