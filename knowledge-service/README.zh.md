@@ -8,7 +8,7 @@ description: "配置独立的 DSH Ops Markdown 知识 API、混合检索和增�
 
 ## 总结
 
-通过独立的鉴权 API 检索 Markdown 手册和操作记录。检索结合中文及技术词 BM25+、pgvector 余弦搜索、倒数排名融合和硅基流动重排。DSH 插件可调用该服务，同时保留本地 Markdown 回退。不依赖或修改其他项目的数据库。
+通过独立的鉴权 API 检索 Markdown 手册和操作记录。检索结合中文及技术词 BM25+、pgvector 余弦搜索、倒数排名融合和模型重排。DSH 插件可调用该服务，同时保留本地 Markdown 回退。不依赖或修改其他项目的数据库。
 
 ## 目录
 
@@ -21,7 +21,7 @@ description: "配置独立的 DSH Ops Markdown 知识 API、混合检索和增�
 <a id="setup"></a>
 ## 配置与启动
 
-需要 Python 3.11+、uv、运行 Linux 容器的 Docker Desktop，以及硅基流动嵌入和重排权限。在本目录执行以下命令，先检查并填写示例配置；不要覆盖已有的 .env。
+需要 Python 3.11+、uv、运行 Linux 容器的 Docker Desktop，以及兼容的嵌入模型和重排模型 API 访问权限。在本目录执行以下命令，先检查并填写示例配置；不要覆盖已有的 .env。
 
 ```powershell
 Copy-Item .env.example .env
@@ -31,9 +31,11 @@ Copy-Item .env.example .env
 
 填写 POSTGRES_PASSWORD，并在 RAG_DATABASE_URL 中设置一致的密码；必要时对连接 URL 中的密码进行 URL 编码。设置新的 RAG_API_TOKEN、RAG_SILICONFLOW_API_KEY 以及实际模型名称和维度。示例模型名称可以修改，不代表已确认你的账号拥有访问权限。不要提交 .env。
 
+`RAG_API_TOKEN` 用于 DSH 访问知识服务；模型 API Key 用于调用嵌入/重排模型，两者是不同凭据。当前适配器共用一个 `RAG_MODEL_BASE_URL` 和模型 API Key，沿用已有变量名 `RAG_SILICONFLOW_API_KEY`。模型服务须支持适配器的 `/embeddings`、`/rerank` 请求与响应字段；修改 URL 不代表兼容所有提供商。尚未实现两个模型分别配置地址或 Key。
+
 启动脚本安装锁定依赖、验证配置，优先使用 docker-compose（否则使用 docker compose），仅启动本 Compose 项目的 PostgreSQL，并在前台运行 127.0.0.1:8765 上的 API。PostgreSQL 绑定 127.0.0.1:55432，数据位于本目录的 .data/postgres。关闭 API 不会停止 PostgreSQL。数据库与 Markdown 源文件需要分别备份。
 
-使用 Start-Knowledge.ps1 -Check 可以只验证配置而不启动服务。正式启动和真实硅基流动访问需要先填写 .env；自动集成测试使用独立临时数据库和模拟模型 HTTP 响应。
+使用 Start-Knowledge.ps1 -Check 可以只验证配置而不启动服务。正式启动和真实模型 API 访问需要先填写 .env；自动集成测试使用独立临时数据库和模拟模型 HTTP 响应。
 
 <a id="sync"></a>
 ## 同步文档
@@ -84,7 +86,7 @@ uv run python -m ops_knowledge.sync ../operations --interval 300
 
 搜索嵌入失败时回退到 BM25+；重排失败时回退到融合排名，两者均明确返回降级提示。不使用图数据库或独立关键词搜索集群。PostgreSQL 执行精确向量搜索；每次查询从筛选后的语料重新建立 BM25+，受 RAG_MAX_CORPUS_CHUNKS 限制。
 
-常见密码/token 赋值、bearer 字符串、私钥块和 URL 凭据会在入库及调用模型前脱敏。这是尽力识别，不保证识别任意秘密。同步前请审查源文档：脱敏后的文本会发送给硅基流动，本地原始 Markdown 不会被重写或清洗。
+常见密码/token 赋值、bearer 字符串、私钥块和 URL 凭据会在入库及调用模型前脱敏。这是尽力识别，不保证识别任意秘密。同步前请审查源文档：脱敏后的文本会发送给配置的模型服务，本地原始 Markdown 不会被重写或清洗。
 
 <a id="limits"></a>
 ## 限制与验证
@@ -97,9 +99,9 @@ uv run pytest --run-db -q
 uv run ruff check ops_knowledge tests
 ```
 
-集成测试创建唯一命名的临时 pgvector 容器和数据库，使用系统分配的回环端口，完成后清理自身资源。测试覆盖鉴权、真实数据库读写、更新失败保留、删除、混合检索、降级、处理流程变更和同步清单。硅基流动响应为模拟数据；真实模型效果和访问权限仍需部署时验证。
+集成测试创建唯一命名的临时 pgvector 容器和数据库，使用系统分配的回环端口，完成后清理自身资源。测试覆盖鉴权、真实数据库读写、更新失败保留、删除、混合检索、降级、处理流程变更和同步清单。模型 API 响应为模拟数据；真实模型效果和访问权限仍需部署时验证。
 
-协议参考：[硅基流动重排](https://docs.siliconflow.cn/docs/api/rerank-post)、[pgvector](https://github.com/pgvector/pgvector)、[rank-bm25](https://github.com/dorianbrown/rank_bm25)。
+协议参考：[重排接口协议示例](https://docs.siliconflow.cn/docs/api/rerank-post)、[pgvector](https://github.com/pgvector/pgvector)、[rank-bm25](https://github.com/dorianbrown/rank_bm25)。
 
 ### 开发备注
 

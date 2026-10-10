@@ -41,7 +41,7 @@ Browser 在隐藏时保活，但存储 partition 只存在于当前应用进程�
 
 旧 CLI 包保留在插件根目录。桌面变体的 manifest、补丁、Client 页面和隔离构建脚本位于 `desktop/`。桌面补丁只插入 `sre-webshell`，不修改默认 skill 根目录，不安装全局排他工具策略。默认禁用，目标 URL 留空。
 
-在 Desktop profile 补丁中配置 `enabled`、`targetUrl`、`operationsDir` 和 `runtimeDir`。复用本地数据时显式填写已有运维资料及连接路径，不把加密凭据搬到其他 Windows 账号。插件 RAG 页面修改 `ragUrl`、`ragTokenEnv`、`ragTimeoutMs`；RAG API token 存在对应名称的 DSH 原生凭据中。知识服务的硅基流动 key 仍留在私有 `.env`，不放进插件包。
+在 Desktop profile 补丁中配置 `enabled`、`targetUrl`、`operationsDir` 和 `runtimeDir`。复用本地数据时显式填写已有运维资料及连接路径，不把加密凭据搬到其他 Windows 账号。插件 RAG 页面修改 `ragUrl`、`ragTokenEnv`、`ragTimeoutMs`；RAG API token 存在对应名称的 DSH 原生凭据中。知识服务的嵌入/重排模型 API Key 仍留在私有 `.env`，不放进插件包。
 
 插件隔离构建脚本为 `desktop/Build.ps1`，只暂存源码、包元数据与说明，不复制连接、运行数据或 `.env`。原版接入只构建插件。完全退出 Desktop 后，使用随包的 `dsh plugin --profile desktop add <package.tgz>` 安装，再重开应用。安装目录的可执行文件与 `app.asar` 保持不变。默认 bundle 禁用，需在 profile 补丁启用并填写精确目标 URL。
 

@@ -3,32 +3,46 @@ description: "在原版 DeepSeek Harness 桌面应用中操作 WebShell，支持
 kind: "package-bundle"
 ---
 
+<a id="ops-title"></a>
 # DSH Ops Plugin
 
 [English](README.md) | 中文
 
+<a id="ops-headline"></a>
 # 让Deepseek替你面对烦人的WebShell运维
 
+已支持 DeepSeek Harness 桌面版。
+
+<a id="ops-summary"></a>
 ## 概述
 
 通过自然语言请求，在原版 DeepSeek Harness 桌面应用中操作 WebShell，无需重编译应用。插件在后台 Browser 标签中输入和读取，普通命令只提交一次，默认等待十秒后读取。独立写/读工具支持交互命令和长等待。优先采集 WebSocket/xterm/DOM 文本，截图兜底。敏感命令须确认。本地 Markdown 记录和可选的 pgvector/BM25/rerank API 支持知识检索。本项目是 Ops 运维助手，不是完整 SRE 平台。
 
+<a id="ops-contents"></a>
 ## 目录
 
-可选的 [Markdown 知识服务](knowledge-service/README.zh.md)：独立 pgvector 存储、BM25/向量检索、硅基流动重排和增量同步。
+可选的 [Markdown 知识服务](knowledge-service/README.zh.md)：独立 pgvector 存储、BM25/向量检索、重排和增量同步。
 
 无需重编译应用的原版桌面接入见桌面说明：[English](DESKTOP.md) | [中文](DESKTOP.zh.md)。根目录 CLI 包与桌面变体分别构建。
 
 连接、登录、运维记录与 RAG 的完整范围见[英文需求](REQUIREMENTS.md) / [中文需求](REQUIREMENTS.zh.md)和[英文设计](DESIGN.md) / [中文设计](DESIGN.zh.md)。两份文档区分当前能力与待实现工作。
 
-- [能力与运行要求](#requirements)
-- [安装与启动](#use-this-package)
-- [配置](#configuration)
-- [日常使用与恢复](#usage)
-- [连接与隐私](#records)
-- [实现说明](#understand-the-implementation)
-- [模型体验](#model-experience)
-- [已知限制与未实现功能](#known-limitations-and-deferred-work)
+- [DSH Ops Plugin](#ops-title)
+- [让Deepseek替你面对烦人的WebShell运维](#ops-headline)
+  - [概述](#ops-summary)
+  - [目录](#ops-contents)
+  - [能力与运行要求](#requirements)
+  - [安装与启动](#use-this-package)
+    - [原版桌面应用：推荐](#ops-desktop-install)
+    - [旧 CLI 源码目录](#ops-cli-install)
+  - [配置](#configuration)
+    - [在插件页面配置 RAG](#ops-rag-settings)
+  - [日常使用与恢复](#usage)
+  - [连接与隐私](#records)
+  - [实现说明](#understand-the-implementation)
+  - [模型体验](#model-experience)
+  - [已知限制与未实现功能](#known-limitations-and-deferred-work)
+    - [开发备注](#ops-dev-note)
 
 -----
 
@@ -37,7 +51,7 @@ kind: "package-bundle"
 
 桌面插件版本为 `0.2.0-rc.2.20261010.13`，适配官方 DSH `0.2.0-rc.2`。内部包名为 `dsh-sre-webshell`，插件 ID 为 `sre-webshell`；桌面版使用 `desktop` profile。根目录保留旧 CLI 版本 `0.1.0` 和 `sre` profile。
 
-桌面接入只支持原版应用中的插件。重编译的 DSH2 应用已放弃，不要安装，也不要使用其定制主进程通道。桌面说明：[English](DESKTOP.md) | [中文](DESKTOP.zh.md)。
+桌面接入只支持原版应用中的插件。桌面说明：[English](DESKTOP.md) | [中文](DESKTOP.zh.md)。
 
 | 能力 | 当前行为 |
 |---|---|
@@ -61,12 +75,14 @@ Linux 上使用 DSH 支持范围内的系统 Node 和 `bash sre-webshell/Build.s
 <a id="use-this-package"></a>
 ## 安装与启动
 
+<a id="ops-desktop-install"></a>
 ### 原版桌面应用：推荐
 
 按桌面说明操作：[English](DESKTOP.md) | [中文](DESKTOP.zh.md)。只构建 `desktop/` 插件变体，完全退出 DSH，使用随包的官方 CLI 将插件压缩包安装到 `desktop` profile，再重开 DSH。启用插件并配置目标 URL 和本地数据路径，不替换应用可执行文件或 `app.asar`。在 DSH Browser 中打开目标 WebShell 并登录；常规 run/write/read 自动绑定唯一匹配标签。
 
-RAG 可选：在插件设置页配置接口地址、超时和 token 引用，独立配置知识服务。其硅基流动 key 必须留在私有 `.env`；见[知识服务说明](knowledge-service/README.zh.md)。没有服务时，本地 runbook 仍可使用。
+RAG 可选：在插件设置页配置接口地址、超时和 token 引用，独立配置知识服务。嵌入/重排模型的 API Key 必须留在私有 `.env`；见[知识服务说明](knowledge-service/README.zh.md)。没有服务时，本地 runbook 仍可使用。
 
+<a id="ops-cli-install"></a>
 ### 旧 CLI 源码目录
 
 先按 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的官方说明安装并构建 DSH。将本仓库内容放在 DSH 根目录下名为 `sre-webshell` 的目录中：
@@ -199,11 +215,12 @@ $env:DSH_HOME = Join-Path (Get-Location) '.dsh-home'
 | `allowCritical` | `false`；单独开启破坏性动作与两阶段审批 |
 | `allowCredentialInjection` | `false`；单独开启受保护提示中的凭据注入 |
 
+<a id="ops-rag-settings"></a>
 ### 在插件页面配置 RAG
 
 打开 DSH 的「插件」→ `dsh-sre-webshell` → `sre-webshell` →「配置」。这里可修改 `ragUrl`、`ragTimeoutMs` 和 `ragTokenEnv`（页面标为 RAG API 地址、检索超时、令牌引用名）。保存后，下次 `runbook_search` 即使用新值；无需手改 `cordis.patch.yml` 或重启。`ragUrl` 留空会只使用本地 Markdown。令牌有独立的密码输入框，保存到 DSH 凭据存储，不会写进设置文件；将知识服务 `knowledge-service/.env` 里的 `RAG_API_TOKEN` 值复制到这里一次，默认引用名为 `DSH_RAG_API_TOKEN`。令牌不会回显。
 
-旧版 `Start-SRE.ps1`/`Start-SRE.sh` 会从知识服务 `.env` 自动注入 `DSH_RAG_API_TOKEN`；现在不再注入，以便在设置页更新令牌。若你自己仍在启动环境中设置该变量，它会优先于 DSH 存储，令牌输入框会显示为环境来源且不可编辑。要用页面管理令牌，请移除该环境变量后重启 DSH。未配置令牌或知识服务未运行时，本地手册搜索仍可用，RAG 部分返回明确提示。知识服务自身的数据库、硅基流动模型和同步配置仍在 `knowledge-service/.env`，此页面不负责启动或配置该独立服务；详见[知识服务说明](knowledge-service/README.zh.md)。
+旧版 `Start-SRE.ps1`/`Start-SRE.sh` 会从知识服务 `.env` 自动注入 `DSH_RAG_API_TOKEN`；现在不再注入，以便在设置页更新令牌。若你自己仍在启动环境中设置该变量，它会优先于 DSH 存储，令牌输入框会显示为环境来源且不可编辑。要用页面管理令牌，请移除该环境变量后重启 DSH。未配置令牌或知识服务未运行时，本地手册搜索仍可用，RAG 部分返回明确提示。知识服务自身的数据库、嵌入/重排模型、API Key 和同步配置仍在 `knowledge-service/.env`，此页面不负责启动或配置该独立服务；详见[知识服务说明](knowledge-service/README.zh.md)。
 
 保存的偏好选中其他预设时，请在 DSH 会话菜单显式选择 `sre-full-access`。完整文件权限与审批是两回事：`approval: never` 拒绝显式审批请求，不代表全部批准。绑定仍需确认，自动截图不授予命令/凭据审批。helper 默认超时 25 秒，绑定默认有效期 120 秒。
 
@@ -275,12 +292,11 @@ $env:DSH_HOME = Join-Path (Get-Location) '.dsh-home'
 <a id="known-limitations-and-deferred-work"></a>
 ## 已知限制与未实现功能
 
-操作员于 2026-09-19 报告原生 WebShell 成功执行 `ls`，结束标记为 `rc=0`。托管模式已用本地合成 Chromium 页面测试，包括其他标签在前台时输入、单次回车、xterm/DOM 读取及截图清理；尚未在真实 Apollo WebShell 或 Linux 主机验证。其他无密钥测试覆盖策略、禁止重打、审批、审计持久化及构建后的 DSH 组合，不认证所有终端/浏览器/模型。证据与早期检查见 [ACCEPTANCE.md](ACCEPTANCE.md)。
-
-原始文本 WebSocket（例如已测试的 Apollo WebShell）是最可靠的路径。[阿里云 Workbench CLI](https://www.alibabacloud.com/help/tc/ecs/user-guide/connect-to-an-instance-through-workbench-cli/)官方说明存在 WebSocket 后端，是通用 CDP 采集器的兼容目标；[腾讯云 OrcaTerm](https://cloud.tencent.com/document/product/1665)也是浏览器终端目标，但其私有帧协议未在此获得公开认证。JSON 或二进制厂商封装仅在其中的文本可识别时处理。HTML5 VNC/RDP 是视觉/二进制协议而非终端文本流，因此使用截图。Cloud Shell、服务/Pod 终端、iframe/分屏及各厂商登录流程仍需真实目标验收。Flash/Java、图形操作、SSH/WinRM 执行、重定向或厂商专有自动登录、无限制 Kubernetes 操作和设置编辑器尚未实现。
+原始文本 WebSocket 是最可靠的路径。[阿里云 Workbench CLI](https://www.alibabacloud.com/help/tc/ecs/user-guide/connect-to-an-instance-through-workbench-cli/)官方说明存在 WebSocket 后端，是通用 CDP 采集器的兼容目标；[腾讯云 OrcaTerm](https://cloud.tencent.com/document/product/1665)也是浏览器终端目标，但其私有帧协议未在此获得公开认证。JSON 或二进制厂商封装仅在其中的文本可识别时处理。HTML5 VNC/RDP 是视觉/二进制协议而非终端文本流，因此使用截图。Cloud Shell、服务/Pod 终端、iframe/分屏及各厂商登录流程仍需真实目标验收。Flash/Java、图形操作、SSH/WinRM 执行、重定向或厂商专有自动登录、无限制 Kubernetes 操作和设置编辑器尚未实现。
 
 视觉转录可能误读小字、软换行或隐藏字符。分页器需人工处理，滚轮不会自动恢复位置。托管模式要求浏览器页面暴露 xterm 输入实例或唯一的辅助输入框；不支持的 Canvas/私有终端会安全拒绝输入。完整 URL 校验不认证服务器。原生模式仍需按目标测试混合 DPI、输入法和焦点。本 MVP 不代表生产认证，不应无人值守部署。
 
+<a id="ops-dev-note"></a>
 ### 开发备注
 
 <details>

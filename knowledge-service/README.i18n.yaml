@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write sre-webshell/knowledge-service/README.md
-README.md: 56b1d445fbc844a235da92da0fb1ff83f07fde41
-README.zh.md: e352093af4a7a6c03fbe5f1a451ff92d77e4b5f8
+README.md: 304bd4acc38e18c5b00f0c0a5382cdd318f0f108
+README.zh.md: 132537cc55df9a146c7ab0b9ec95a8be2a79c618

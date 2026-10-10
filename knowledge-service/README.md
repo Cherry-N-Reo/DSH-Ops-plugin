@@ -8,7 +8,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Search Markdown manuals and operation records through an independent authenticated API. Retrieval combines Chinese/technical BM25+, pgvector cosine search, reciprocal-rank fusion and SiliconFlow reranking. The DSH plugin can query this service while retaining local Markdown fallback. No existing project database is required or modified.
+Search Markdown manuals and operation records through an independent authenticated API. Retrieval combines Chinese/technical BM25+, pgvector cosine search, reciprocal-rank fusion and model reranking. The DSH plugin can query this service while retaining local Markdown fallback. No existing project database is required or modified.
 
 ## Table of Contents
 
@@ -21,7 +21,7 @@ Search Markdown manuals and operation records through an independent authenticat
 <a id="setup"></a>
 ## Setup
 
-Requirements: Python 3.11+, uv, Docker Desktop in Linux-container mode, and SiliconFlow embedding/rerank access. Run the following from this directory after reviewing and filling the example settings; do not overwrite an existing .env.
+Requirements: Python 3.11+, uv, Docker Desktop in Linux-container mode, and access to compatible embedding and rerank model APIs. Run the following from this directory after reviewing and filling the example settings; do not overwrite an existing .env.
 
 ```powershell
 Copy-Item .env.example .env
@@ -31,9 +31,11 @@ Copy-Item .env.example .env
 
 Set POSTGRES_PASSWORD and the matching password in RAG_DATABASE_URL; use URL encoding in the connection URL if needed. Set a new RAG_API_TOKEN, RAG_SILICONFLOW_API_KEY and your actual model IDs/dimension. Example model names are configurable, not an assertion about your account's access. Never commit .env.
 
+`RAG_API_TOKEN` authenticates DSH to this knowledge service; the model API key authenticates embedding/rerank requests. They are separate credentials. The current adapter uses one `RAG_MODEL_BASE_URL` and a shared model API key, retaining the existing variable name `RAG_SILICONFLOW_API_KEY`. Model services must support the adapter's `/embeddings` and `/rerank` request and response fields; changing the URL does not guarantee compatibility with every provider. Separate addresses or keys for the two models are not implemented.
+
 The launcher installs locked dependencies, validates configuration, selects docker-compose when available (otherwise docker compose), starts only this Compose project's PostgreSQL, and runs the API in the foreground on 127.0.0.1:8765. PostgreSQL binds 127.0.0.1:55432 and stores data in .data/postgres under this directory. Closing the API does not stop PostgreSQL. Back up this database separately from the Markdown sources.
 
-Use Start-Knowledge.ps1 -Check to validate configuration without starting services. Production startup and real SiliconFlow access require your completed .env; the automated integration tests use a separate disposable database and mocked model HTTP.
+Use Start-Knowledge.ps1 -Check to validate configuration without starting services. Production startup and live model API access require your completed .env; the automated integration tests use a separate disposable database and mocked model HTTP.
 
 <a id="sync"></a>
 ## Synchronize documents
@@ -84,7 +86,7 @@ The service returns excerpts with source paths, sections, line references, docum
 
 Search embedding failure falls back to BM25+; rerank failure falls back to fused rank order. Both return degradation warnings. No graph database or separate keyword search cluster is used. PostgreSQL performs exact vector search; BM25+ is rebuilt from the filtered corpus for each query, capped by RAG_MAX_CORPUS_CHUNKS.
 
-Common password/token assignments, bearer strings, private-key blocks and URL credentials are masked before storage and model requests. This is best-effort masking, not a guarantee for arbitrary secrets. Review source documents before synchronization: their redacted text is sent to SiliconFlow, and original local Markdown is not rewritten or scrubbed.
+Common password/token assignments, bearer strings, private-key blocks and URL credentials are masked before storage and model requests. This is best-effort masking, not a guarantee for arbitrary secrets. Review source documents before synchronization: their redacted text is sent to the configured model service, and original local Markdown is not rewritten or scrubbed.
 
 <a id="limits"></a>
 ## Limits and verification
@@ -97,9 +99,9 @@ uv run pytest --run-db -q
 uv run ruff check ops_knowledge tests
 ```
 
-The integration tests create uniquely named disposable pgvector containers and databases, bind OS-assigned loopback ports, and remove their resources on completion. They exercise authentication, actual database reads/writes, update failure retention, deletion, hybrid retrieval, degradation, pipeline changes and sync manifests. SiliconFlow responses are mocked; live model quality and access remain a deployment check.
+The integration tests create uniquely named disposable pgvector containers and databases, bind OS-assigned loopback ports, and remove their resources on completion. They exercise authentication, actual database reads/writes, update failure retention, deletion, hybrid retrieval, degradation, pipeline changes and sync manifests. Model API responses are mocked; live model quality and access remain a deployment check.
 
-Protocol references: [SiliconFlow rerank](https://docs.siliconflow.cn/docs/api/rerank-post), [pgvector](https://github.com/pgvector/pgvector), [rank-bm25](https://github.com/dorianbrown/rank_bm25).
+Protocol references: [Rerank API protocol example](https://docs.siliconflow.cn/docs/api/rerank-post), [pgvector](https://github.com/pgvector/pgvector), [rank-bm25](https://github.com/dorianbrown/rank_bm25).
 
 ### Dev Note
 

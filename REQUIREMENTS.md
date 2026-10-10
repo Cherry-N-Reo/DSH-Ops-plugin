@@ -23,7 +23,7 @@ Users can select a WebShell or SSH target from local connection records, request
 | Credential protection | Windows DPAPI CurrentUser `protectedAuth`, on-demand login decryption and an explicit plaintext migration/connection manager are implemented. Existing plaintext files require migration before automatic login; the real local file is not migrated automatically. |
 | SSH | Connection bookmarks only; SSH execution and login are not available. |
 | Local knowledge | Markdown under `runbooks/` and `records/` is searchable locally with source, hash and outcome labels. Submitted terminal operations create provisional records and update them after verified collection. |
-| Independent RAG | PostgreSQL/pgvector, BM25+, vector recall, RRF, SiliconFlow rerank and incremental sync are implemented; record outcomes now flow through the index. Deployment configuration and a separately running sync process remain required. |
+| Independent RAG | PostgreSQL/pgvector, BM25+, vector recall, RRF, model rerank and incremental sync are implemented; record outcomes now flow through the index. Deployment configuration and a separately running sync process remain required. |
 | Audit | Metadata hash chain exists; it is not an operation record suitable for RAG retrieval. |
 
 ## Connections and credentials
@@ -49,7 +49,7 @@ Users can select a WebShell or SSH target from local connection records, request
 - Mark success only when execution results are observed. A tool call, timeout, disconnected page or unreadable screenshot is uncertain. Failed records remain searchable but never become approved manuals automatically.
 - Recent records and manuals are searchable directly from local Markdown; older records come from an independent RAG API. The plugin deduplicates results and preserves source path, section, status and degradation warnings so the model can check applicability.
 - The knowledge service tracks document ID, content hash, pipeline fingerprint, last successful sync and failures in a file manifest. Changed files reindex and failed ones remain pending. Remote deletion is explicit and controlled; one missed scan must not clear history.
-- RAG uses this project's separate PostgreSQL/pgvector and SiliconFlow embedding/rerank models. The initial retrieval combines BM25+ and vector recall. Add graph relationships only if concrete cross-entity queries and evaluation show a benefit.
+- RAG uses this project's separate PostgreSQL/pgvector and embedding/rerank model APIs. The initial retrieval combines BM25+ and vector recall. Add graph relationships only if concrete cross-entity queries and evaluation show a benefit.
 - Retrieval is untrusted reference data. Manuals, historical commands, similarity and rerank scores cannot replace target verification, risk classification or approval. Review raw Markdown before indexing; rule-based redaction cannot detect every secret.
 
 ## Acceptance criteria

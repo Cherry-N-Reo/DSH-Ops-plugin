@@ -3,32 +3,46 @@ description: "Operate WebShells in original DeepSeek Harness Desktop with backgr
 kind: "package-bundle"
 ---
 
+<a id="ops-title"></a>
 # DSH Ops Plugin
 
 English | [中文](README.zh.md)
 
+<a id="ops-headline"></a>
 # Let DeepSeek Handle Tedious WebShell Operations for You
 
+Supports DeepSeek Harness Desktop.
+
+<a id="ops-summary"></a>
 ## Summary
 
 Use natural-language requests to operate WebShells inside original DeepSeek Harness Desktop, without rebuilding the application. The plugin inputs and reads in background Browser tabs; a normal command is submitted once and read after a configurable ten-second wait. Separate write/read tools support interactive commands and longer waits. WebSocket/xterm/DOM text is preferred, with screenshots as fallback. Sensitive commands require confirmation. Local Markdown records and an optional pgvector/BM25/rerank API support knowledge retrieval. This is an Ops assistant, not a complete SRE platform.
 
+<a id="ops-contents"></a>
 ## Table of Contents
 
-Optional [Markdown knowledge service](knowledge-service/README.md): independent pgvector storage, BM25/vector retrieval, SiliconFlow reranking and incremental synchronization.
+Optional [Markdown knowledge service](knowledge-service/README.md): independent pgvector storage, BM25/vector retrieval, model reranking and incremental synchronization.
 
 For original Desktop integration without rebuilding the app, see the Desktop guide: [English](DESKTOP.md) | [中文](DESKTOP.zh.md). The root CLI package and the Desktop variant are separate builds.
 
 For the complete connection, login, operation record and RAG scope, see [requirements](REQUIREMENTS.md) / [中文需求](REQUIREMENTS.zh.md) and [implementation design](DESIGN.md) / [中文设计](DESIGN.zh.md). These documents distinguish current capabilities from planned work.
 
-- [Capabilities and requirements](#requirements)
-- [Installation and launch](#use-this-package)
-- [Configuration](#configuration)
-- [Daily use and recovery](#usage)
-- [Connections and privacy](#records)
-- [Understand the implementation](#understand-the-implementation)
-- [Model Experience](#model-experience)
-- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [DSH Ops Plugin](#ops-title)
+- [Let DeepSeek Handle Tedious WebShell Operations for You](#ops-headline)
+  - [Summary](#ops-summary)
+  - [Table of Contents](#ops-contents)
+  - [Capabilities and requirements](#requirements)
+  - [Installation and launch](#use-this-package)
+    - [Original Desktop: recommended](#ops-desktop-install)
+    - [Legacy CLI source checkout](#ops-cli-install)
+  - [Configuration](#configuration)
+    - [Configure RAG in Plugins](#ops-rag-settings)
+  - [Daily use and recovery](#usage)
+  - [Connections and privacy](#records)
+  - [Understand the implementation](#understand-the-implementation)
+  - [Model Experience](#model-experience)
+  - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+    - [Dev Note](#ops-dev-note)
 
 -----
 
@@ -37,7 +51,7 @@ For the complete connection, login, operation record and RAG scope, see [require
 
 The Desktop plugin version is `0.2.0-rc.2.20261010.13`, targeting official DSH `0.2.0-rc.2`. The internal package name is `dsh-sre-webshell` and plugin ID is `sre-webshell`; Desktop uses the `desktop` profile. The root package retains legacy CLI version `0.1.0` and profile `sre`.
 
-Only the original Desktop plugin is supported for Desktop integration. The recompiled DSH2 application is abandoned; do not install it or use its custom-main-process transport. See the Desktop guide: [English](DESKTOP.md) | [中文](DESKTOP.zh.md).
+Only the original Desktop plugin is supported for Desktop integration. See the Desktop guide: [English](DESKTOP.md) | [中文](DESKTOP.zh.md).
 
 | Capability | Current behavior |
 |---|---|
@@ -61,12 +75,14 @@ On Linux, use system Node within DSH's engine range and `bash sre-webshell/Build
 <a id="use-this-package"></a>
 ## Installation and launch
 
+<a id="ops-desktop-install"></a>
 ### Original Desktop: recommended
 
 Follow the Desktop guide: [English](DESKTOP.md) | [中文](DESKTOP.zh.md). Build only the `desktop/` plugin variant, fully quit DSH, install the plugin archive into its `desktop` profile through the bundled official CLI, then reopen DSH. Enable the plugin and configure its target URL and local data paths. The application executable and `app.asar` are not replaced. Open and sign in to the target WebShell inside DSH's Browser; ordinary run/write/read automatically bind the unique matching tab.
 
-RAG is optional: configure its endpoint, timeout and token reference in the plugin settings page, and configure the independent knowledge service separately. Its SiliconFlow key must stay in a private `.env`; see the [knowledge-service guide](knowledge-service/README.md). Without the service, local runbooks remain available.
+RAG is optional: configure its endpoint, timeout and token reference in the plugin settings page, and configure the independent knowledge service separately. Its embedding/rerank model API key must stay in a private `.env`; see the [knowledge-service guide](knowledge-service/README.md). Without the service, local runbooks remain available.
 
+<a id="ops-cli-install"></a>
 ### Legacy CLI source checkout
 
 Install and build [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) using its own instructions first. Place this repository's contents in a directory named `sre-webshell` directly inside the DSH checkout:
@@ -199,11 +215,12 @@ Edit `.dsh-home/profiles/sre/cordis.patch.yml`, a top-level YAML array. Replace 
 | `allowCritical` | `false`; separate critical-action opt-in and two-stage approval |
 | `allowCredentialInjection` | `false`; separate protected-prompt credential opt-in |
 
+<a id="ops-rag-settings"></a>
 ### Configure RAG in Plugins
 
 Open DSH **Plugins** → `dsh-sre-webshell` → `sre-webshell` → **Configure**. The page edits `ragUrl`, `ragTimeoutMs`, and `ragTokenEnv` (RAG API URL, search timeout, and token reference). Saved values apply to the next `runbook_search` without editing `cordis.patch.yml` or restarting. An empty `ragUrl` keeps local Markdown search only. Save the token in the separate password field; DSH stores it in its credential store, not the settings document. Copy the knowledge service's `RAG_API_TOKEN` value from `knowledge-service/.env` here once. The default reference is `DSH_RAG_API_TOKEN`; the token is never read back into the page.
 
-Earlier `Start-SRE.ps1`/`Start-SRE.sh` versions automatically injected `DSH_RAG_API_TOKEN` from the knowledge service `.env`; they no longer do so, allowing the page to update the credential. An explicitly set process environment variable still takes precedence over DSH's store, makes the token control read-only, and requires a DSH restart after removal before the page can manage it. Missing credentials or an unavailable knowledge service leave local Markdown search available with a RAG warning. The knowledge service's database, SiliconFlow models, and synchronization settings remain in `knowledge-service/.env`; this page neither starts nor configures that separate service. See the [knowledge-service guide](knowledge-service/README.md).
+Earlier `Start-SRE.ps1`/`Start-SRE.sh` versions automatically injected `DSH_RAG_API_TOKEN` from the knowledge service `.env`; they no longer do so, allowing the page to update the credential. An explicitly set process environment variable still takes precedence over DSH's store, makes the token control read-only, and requires a DSH restart after removal before the page can manage it. Missing credentials or an unavailable knowledge service leave local Markdown search available with a RAG warning. The knowledge service's database, embedding/rerank models, API key, and synchronization settings remain in `knowledge-service/.env`; this page neither starts nor configures that separate service. See the [knowledge-service guide](knowledge-service/README.md).
 
 Select `sre-full-access` explicitly in DSH's session menu if a saved preference chooses another preset. Full filesystem access and approval are separate: `approval: never` rejects explicit approval requests rather than granting them. Binding still needs confirmation; automatic screenshots do not grant command/credential approval. Helper timeout defaults to 25 seconds and binding freshness to 120 seconds.
 
@@ -275,12 +292,11 @@ In managed mode the agent calls `webshell_open` or `terminal_observe`; a login r
 <a id="known-limitations-and-deferred-work"></a>
 ## Known Limitations and Deferred Work
 
-The operator reported successful native WebShell execution of `ls` with an end marker and `rc=0` on 2026-09-19. Managed mode has been tested against local synthetic Chromium pages, including input while another tab is foreground, one Enter, xterm/DOM reading and screenshot cleanup; it has not yet been exercised against the live Apollo WebShell or a Linux host. Other keyless tests cover policy, no replay, approvals, audit persistence and built DSH composition, not certification of every terminal/browser/model. Evidence and earlier checks are in [ACCEPTANCE.md](ACCEPTANCE.md).
-
-Raw-text WebSockets such as the tested Apollo WebShell are the strongest path. [Alibaba Cloud Workbench CLI](https://www.alibabacloud.com/help/tc/ecs/user-guide/connect-to-an-instance-through-workbench-cli/) documents a WebSocket backend and is a compatibility target for the generic CDP collector; [Tencent Cloud OrcaTerm](https://cloud.tencent.com/document/product/1665) is also a browser-terminal target, but its private frame protocol is not publicly certified here. JSON or binary vendor envelopes are accepted only when their text is recognizable. HTML5 VNC/RDP is visual/binary rather than a terminal text stream and therefore uses screenshots. Cloud Shell, service/Pod terminals, iframe/split panes and each vendor login flow still require real-target acceptance. Flash/Java, GUI automation, SSH/WinRM execution, redirected/vendor-specific automatic login, unrestricted Kubernetes operations and a settings editor are not implemented.
+Raw-text WebSockets are the strongest path. [Alibaba Cloud Workbench CLI](https://www.alibabacloud.com/help/tc/ecs/user-guide/connect-to-an-instance-through-workbench-cli/) documents a WebSocket backend and is a compatibility target for the generic CDP collector; [Tencent Cloud OrcaTerm](https://cloud.tencent.com/document/product/1665) is also a browser-terminal target, but its private frame protocol is not publicly certified here. JSON or binary vendor envelopes are accepted only when their text is recognizable. HTML5 VNC/RDP is visual/binary rather than a terminal text stream and therefore uses screenshots. Cloud Shell, service/Pod terminals, iframe/split panes and each vendor login flow still require real-target acceptance. Flash/Java, GUI automation, SSH/WinRM execution, redirected/vendor-specific automatic login, unrestricted Kubernetes operations and a settings editor are not implemented.
 
 Visual transcription may misread small text, soft wraps or hidden characters. Pagers need manual completion; wheel navigation does not restore position automatically. Managed mode requires a browser-exposed xterm input or unique helper textarea; unsupported canvas/proprietary terminals fail closed for input. Exact URL checks do not authenticate servers. Native mode still needs target-specific mixed-DPI, IME and focus testing. This MVP is not production-certified; do not deploy unattended.
 
+<a id="ops-dev-note"></a>
 ### Dev Note
 
 <details>
