@@ -40,6 +40,8 @@ test('bridge keeps upstream invocation and PowerShell automatic-variable contrac
   assert.match(bridge, /\$backend\s+-Json\s+\$encoded/)
   assert.match(bridge, /ReadToEnd\(\)/)
   assert.match(bridge, /\[Console\]::InputEncoding = \[System\.Text\.Encoding\]::UTF8/)
+  assert.match(bridge, /GetGUIThreadInfo\(0,ref info\)/)
+  assert.match(bridge, /if \(mode=="keyboard"\) \{\s*layout=LoadKeyboardLayout/)
   // Windows PowerShell 5.1 reads BOM-less files as ANSI; localized labels must be ASCII escapes.
   assert.doesNotMatch(bridge, /[^\x00-\x7f]/)
   if (!hasWindows) return
@@ -74,6 +76,44 @@ test('Unicode and physical input are distinct non-clipboard operations and Enter
     await assert.rejects(driver.typeCommand(rect, '中文', 'keyboard', signal), /ASCII/)
     await assert.rejects(driver.typeCommand(rect, 'ls\n', 'unicode', signal), /single line/)
     assert.equal(calls.length, count)
+  } finally { await driver.dispose() }
+})
+
+test('temporary target work restores the previous window and tab after success or failure', async () => {
+  const calls: string[] = []
+  const identity = { ok: true, hwnd: '0x123', pid: 10, processName: 'chrome', title: 'terminal',
+    rect: { x: 0, y: 0, width: 800, height: 600 } }
+  const original = { ok: true, hwnd: '0x456', pid: 11, processName: 'chrome',
+    selectedTab: { runtimeId: [42, 2] } }
+  const driver = new WindowsDriver({ runtimeDir: pluginDir, timeoutMs: 1000, settleMs: 0,
+    browserProcesses: ['chrome'], targetUrl: 'https://example.invalid/#/shell' },
+  async payload => { calls.push(String(payload.action)); return payload.action === 'foreground-snapshot'
+    ? original : identity })
+  const signal = new AbortController().signal
+  try {
+    assert.equal(await driver.withTemporaryTarget(signal, async target => target.hwnd), '0x123')
+    await assert.rejects(driver.withTemporaryTarget(signal, async () => { throw new Error('capture failed') }), /capture failed/)
+    assert.deepEqual(calls, ['foreground-snapshot', 'focus-target', 'restore-foreground',
+      'foreground-snapshot', 'focus-target', 'restore-foreground'])
+  } finally { await driver.dispose() }
+})
+
+test('temporary target work reports restoration failure instead of claiming a clean capture', async () => {
+  const calls: string[] = []
+  const identity = { ok: true, hwnd: '0x123', pid: 10, processName: 'chrome', title: 'terminal',
+    rect: { x: 0, y: 0, width: 800, height: 600 } }
+  const driver = new WindowsDriver({ runtimeDir: pluginDir, timeoutMs: 1000, settleMs: 0,
+    browserProcesses: ['chrome'], targetUrl: 'https://example.invalid/#/shell' },
+  async payload => {
+    calls.push(String(payload.action))
+    if (payload.action === 'foreground-snapshot') return { ok: true, hwnd: '0x456', pid: 11,
+      processName: 'chrome', selectedTab: { runtimeId: [42, 2] } }
+    if (payload.action === 'restore-foreground') throw new Error('RESTORE_UNAVAILABLE')
+    return identity
+  })
+  try {
+    await assert.rejects(driver.withTemporaryTarget(new AbortController().signal, async () => 'captured'), /RESTORE_UNAVAILABLE/)
+    assert.deepEqual(calls, ['foreground-snapshot', 'focus-target', 'restore-foreground'])
   } finally { await driver.dispose() }
 })
 

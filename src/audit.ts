@@ -3,12 +3,12 @@ import { mkdir, open, readFile, chmod } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 /** Metadata fields accepted in the redacted audit record. */
-const FIELDS = new Set(["sessionId", "callId", "assetId", "terminalSession", "commandHash", "risk", "phase", "outcome", "outputHash", "exitCode", "observationId", "credentialRef", "screenshotHash", "time", "attempts", "mode"]);
+const FIELDS = new Set(["sessionId", "callId", "assetId", "terminalSession", "commandHash", "risk", "phase", "outcome", "outputHash", "exitCode", "observationId", "credentialRef", "screenshotHash", "time", "attempts", "mode", "source"]);
 const HASH_FIELDS = new Set(["commandHash", "outputHash", "screenshotHash"]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const RISKS = new Set(["R0", "R1", "R2", "R3", "R4"]);
-const PHASES = new Set(["accept", "bind", "intent", "final-command", "classified", "attempt", "result", "observe", "calibrate", "screenshot", "protected-recovery", "credential-hidden-prompt", "credential-attempt", "credential-result", "failure", "terminal-evidence", "input-attempt", "input-verified", "input-helper-failure", "critical-environment-probe", "visual-result"]);
+const PHASES = new Set(["accept", "bind", "intent", "final-command", "classified", "attempt", "submitted", "result", "observe", "calibrate", "screenshot", "protected-recovery", "credential-hidden-prompt", "credential-attempt", "credential-result", "failure", "terminal-evidence", "input-attempt", "input-verified", "input-helper-failure", "critical-environment-probe", "visual-result", "text-capture", "text-result"]);
 const OUTCOMES = new Set(["allowed", "allowed-once", "unavailable", "rejected", "cancelled", "complete", "unknown", "injected", "failure"]);
 const queues = new Map<string, Promise<void>>();
 const instances = new Map<string, AuditApi>();
@@ -43,6 +43,7 @@ function validate(event: Record<string, unknown>, requireTime = false): Record<s
     if (key === "phase" && !PHASES.has(value as string)) throw new Error("Audit phase is not allowed");
     if (key === "outcome" && !OUTCOMES.has(value as string)) throw new Error("Audit outcome is not allowed");
     if (key === "mode" && value !== "unicode" && value !== "keyboard") throw new Error("Audit input mode is not allowed");
+    if (key === "source" && !["browser", "websocket", "xterm-buffer", "dom", "screenshot"].includes(value as string)) throw new Error("Audit output source is not allowed");
   }
   return result;
 }

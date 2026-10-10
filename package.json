@@ -4,23 +4,33 @@
   "private": true,
   "type": "module",
   "main": "lib/index.js",
-  "files": ["lib", "scripts", "third-party", "operations", "cordis.patch.yml", "README.md", "README.zh.md", "README.i18n.yaml", "ACCEPTANCE.md", "dependency-pins.json", "THIRD_PARTY_NOTICES.md"],
+  "files": ["lib", "scripts", "third-party", "operations", "Build.sh", "Start-SRE.sh", "cordis.patch.yml", "README.md", "README.zh.md", "README.i18n.yaml", "REQUIREMENTS.md", "REQUIREMENTS.zh.md", "DESIGN.md", "DESIGN.zh.md", "ACCEPTANCE.md", "dependency-pins.json", "THIRD_PARTY_NOTICES.md", "knowledge-service/ops_knowledge/*.py", "knowledge-service/pyproject.toml", "knowledge-service/uv.lock", "knowledge-service/compose.yaml", "knowledge-service/.env.example", "knowledge-service/Start-Knowledge.ps1", "knowledge-service/README*.md"],
   "engines": {"node": "^22.19.0 || >=24.0.0"},
-  "os": ["win32"],
-  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "exports": {".": "./lib/index.js", "./client": "./lib/client.js", "./package.json": "./package.json"},
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}, "client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-settings", "@deepseek-ai/dsh-api-remotes"]}},
   "scripts": {
-    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json && node ../node_modules/tsdown/dist/run.mjs",
     "test": "node --import ../node_modules/tsx/dist/loader.mjs --test tests/*.test.ts"
   },
   "peerDependencies": {
+    "@deepseek-ai/dsh-brand": "0.1.6-alpha.2",
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-tools": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-user-approval": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-user-questions": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-credentials": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-attachment": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-llm": "0.1.6-alpha.2",
     "@deepseek-ai/dsh-util-values": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-settings": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-api-remotes": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-locale": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-settings": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.6-alpha.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.6-alpha.2",
+    "react": "^18.2.0",
     "@deepseek-ai/schemastery": "3.18.2"
   },
-  "dependencies": {"yaml": "2.9.0"}
+  "dependencies": {"yaml": "2.9.0", "playwright": "1.61.1"}
 }

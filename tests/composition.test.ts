@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
+import { createServer } from 'node:http'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
@@ -21,7 +22,7 @@ const runtimeRoot = join(pluginRoot, '.runtime')
 interface JsonObject { [key: string]: unknown }
 interface RunResult { code: number; stdout: string; stderr: string; timedOut: boolean }
 
-function runDsh(options: { cwd: string; sessionRoot: string; home: string; sentinel: string; patches?: string[]; guard?: boolean; entry?: string }): Promise<RunResult> {
+function runDsh(options: { cwd: string; sessionRoot: string; home: string; sentinel: string; patches?: string[]; guard?: boolean; entry?: string; ragUrl?: string; ragToken?: string }): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const args = [options.entry ?? bin, '--profile', 'headless', ...(options.patches ?? [localPatch, compositionPatch]).flatMap(patch => ['--patch', patch]), '--json', 'Exercise the SRE composition tools.']
     const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/(KEY|SECRET|TOKEN|PASSWORD)/i.test(key)))
@@ -36,6 +37,8 @@ function runDsh(options: { cwd: string; sessionRoot: string; home: string; senti
         DSH_COMPOSITION_SESSION_ROOT: options.sessionRoot,
         DSH_COMPOSITION_SENTINEL: options.sentinel,
         DSH_TELEMETRY_DISABLED: '1',
+        DSH_COMPOSITION_RAG_URL: options.ragUrl ?? '',
+        DSH_RAG_API_TOKEN: options.ragToken ?? 'fixture-rag-token',
         ...(options.guard ? { DSH_COMPOSITION_GUARD: '1', DSH_PERMISSION_MODE: 'danger-full-access' } : {}),
       } as NodeJS.ProcessEnv,
       windowsHide: true,
@@ -110,6 +113,59 @@ async function removeRoots(roots: { cwd: string; sessionRoot: string; home: stri
 }
 
 describe('sre-webshell real DSH composition', () => {
+  it('persists optional RAG excerpts and outage warnings through the built profile', async () => {
+    const expected = JSON.parse(await readFile(new URL('./fixtures/rag-expected.json', import.meta.url), 'utf8'))
+    let failing = false
+    const server = createServer((request, response) => {
+      if (request.headers.authorization !== 'Bearer fixture-rag-token') {
+        response.writeHead(401).end(); return
+      }
+      response.writeHead(failing ? 503 : 200, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ items: [{ path: 'records/nginx-check.md', text: 'nginx checked',
+        title: 'Nginx check', section: '', content_hash: 'a'.repeat(64), kind: 'record', status: 'unverified' }], degraded: false }))
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const address = server.address()
+      assert.ok(address && typeof address !== 'string')
+      for (const outage of [false, true]) {
+        failing = outage
+        const roots = await fixtureRoots('rag-composition')
+        try {
+          const result = await runDsh({ ...roots, ragUrl: `http://127.0.0.1:${address.port}` })
+          assert.equal(result.timedOut, false)
+          assert.equal(result.code, 0, result.stderr)
+          const results = (await readLogs(roots.sessionRoot)).filter(record => record.type === 'tool/result')
+          const search = JSON.parse(toolResultText(results[1]!))
+          const localExpected = JSON.parse(await readFile(expectedPath, 'utf8')) as JsonObject
+          assert.deepEqual(search.items, [...localExpected.runbook as unknown[], ...(outage ? [] : [expected.item])])
+          assert.deepEqual(search.warnings, outage ? expected.outageWarnings : [])
+        } finally { await removeRoots(roots) }
+      }
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
+  }, 120_000)
+  it('keeps local search available when the RAG credential is missing', async () => {
+    const server = createServer((_request, response) => { response.writeHead(500).end() })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    let requests = 0
+    server.on('request', () => { requests++ })
+    try {
+      const address = server.address()
+      assert.ok(address && typeof address !== 'string')
+      const roots = await fixtureRoots('rag-missing-token')
+      try {
+        const result = await runDsh({ ...roots, ragUrl: `http://127.0.0.1:${address.port}`, ragToken: '' })
+        assert.equal(result.timedOut, false)
+        assert.equal(result.code, 0, result.stderr)
+        const results = (await readLogs(roots.sessionRoot)).filter(record => record.type === 'tool/result')
+        const search = JSON.parse(toolResultText(results[1]!))
+        const expected = JSON.parse(await readFile(expectedPath, 'utf8')) as JsonObject
+        assert.deepEqual(search.items, expected.runbook)
+        assert.match(search.warnings[0], /credential is not configured/)
+        assert.equal(requests, 0)
+      } finally { await removeRoots(roots) }
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())) }
+  }, 120_000)
   it('runs tools through the launcher-selected built CLI without a source loader', async () => {
     // A source CLI and built registry create distinct scheduler symbols before tool dispatch.
     const launcher = await readFile(join(pluginRoot, 'Start-SRE.ps1'), 'utf8')
@@ -140,6 +196,7 @@ describe('sre-webshell real DSH composition', () => {
     assert.deepEqual(unwrapped.inject, ['tools', 'approval', 'credentials', 'attachments', 'llm'])
     const schema = (unwrapped.Config as { toJSON?: () => unknown }).toJSON?.()
     assert.match(JSON.stringify(schema), /operationsDir/)
+    assert.match(JSON.stringify(schema), /browserDebugUrl/)
     const policy = await import(pathToFileURL(join(pluginRoot, 'lib', 'policy.js')).href)
     assert.equal(policy.classify('rm -rf /', { id: 'sample-web-staging', environment: 'staging', criticality: 'high', profile: 'linux', services: ['nginx'], runbooks: ['runbooks/nginx.md'], credentials: {} }).risk, 'R4')
   })
@@ -156,13 +213,16 @@ describe('sre-webshell real DSH composition', () => {
       const records = await readLogs(roots.sessionRoot)
       const events = records.filter(record => typeof record.type === 'string')
       const calls = events.filter(record => record.type === 'tool/call')
-      assert.deepEqual(calls.map(record => (record.data as JsonObject).name), ['asset_lookup', 'runbook_search', 'terminal_execute', 'connection_list', 'terminal_input_check', 'terminal_scroll'])
+      assert.deepEqual(calls.map(record => (record.data as JsonObject).name), ['asset_lookup', 'runbook_search', 'terminal_run', 'connection_list', 'terminal_write', 'terminal_scroll'])
       const header = ((events.find(record => record.type === 'request/header')?.data as JsonObject).header as JsonObject)
       const tools = header.tools as JsonObject[]
-      assert.deepEqual(tools.filter(tool => ['asset_lookup', 'runbook_search', 'terminal_execute', 'terminal_collect'].includes(String(tool.name))).map(tool => tool.name), ['asset_lookup', 'runbook_search', 'terminal_collect', 'terminal_execute'])
+      assert.ok(['terminal_run', 'terminal_write', 'terminal_read'].every(name => tools.some(tool => tool.name === name)))
       const skillTool = tools.find(tool => tool.name === 'skill')
       assert.ok(skillTool)
       assert.deepEqual((skillTool.parameters as JsonObject).required, ['name'])
+      const loginTool = tools.find(tool => tool.name === 'webshell_login')
+      assert.ok(loginTool)
+      assert.deepEqual((loginTool.parameters as JsonObject).required, ['connectionId'])
       const results = events.filter(record => record.type === 'tool/result')
       assert.deepEqual(JSON.parse(toolResultText(results[0] as JsonObject)), expected.asset)
       assert.deepEqual(JSON.parse(toolResultText(results[1] as JsonObject)), expected.runbook)
@@ -170,10 +230,9 @@ describe('sre-webshell real DSH composition', () => {
       assert.deepEqual(JSON.parse(toolResultText(results[3] as JsonObject)), expected.connections)
       assert.equal(toolResultText(results[4] as JsonObject), expected.terminalDisabled)
       assert.equal(toolResultText(results[5] as JsonObject), expected.terminalDisabled)
-      const inputTool = tools.find(tool => tool.name === 'terminal_input_check')!
-      assert.deepEqual((inputTool.parameters as JsonObject).required,
-        ['observationId', 'inputText', 'idlePrompt', 'fullInputVisible', 'candidateVisible', 'confident'])
-      assert.match(String(inputTool.description), /three Unicode attempts/)
+      const inputTool = tools.find(tool => tool.name === 'terminal_write')!
+      assert.deepEqual((inputTool.parameters as JsonObject).required, ['command', 'reason'])
+      assert.match(String(inputTool.description), /Enter once/)
       assert.ok(tools.some(tool => tool.name === 'terminal_scroll'))
       assert.equal(tools.some(tool => tool.name === 'terminal_calibrate'), false)
       const bindSchema = tools.find(tool => tool.name === 'terminal_bind')!.parameters as JsonObject
@@ -181,6 +240,7 @@ describe('sre-webshell real DSH composition', () => {
       assert.equal(results.some(record => toolResultText(record).includes('DEEPSEEK_API_KEY')), false)
       assert.equal(JSON.stringify(records).includes('fixture-only-web-password'), false)
       assert.equal(JSON.stringify(records).includes('fixture-only-ssh-password'), false)
+      assert.equal(toolResultText(results[3] as JsonObject).includes('operator@example.invalid'), false)
     } finally { await removeRoots(roots) }
   }, 120_000)
 

@@ -7,6 +7,7 @@ import { bridgeError, SreError } from './errors.ts'
 
 export type Rect = { x: number; y: number; width: number; height: number }
 export type WindowIdentity = { hwnd: string; pid: number; processName: string; title: string; rect: Rect }
+type ForegroundSnapshot = { hwnd: string; pid: number; processName: string; selectedTab: { runtimeId: number[] } | null }
 export type WindowsDriverOptions = {
   runtimeDir: string
   timeoutMs: number
@@ -129,6 +130,35 @@ export class WindowsDriver {
     return this.operation(async () => checkedIdentity(await this.helper({ action: 'focus-target',
       browserProcesses: [...this.allowed], targetUrl: this.options.targetUrl, expected }, signal), this.allowed))
   }
+  /** Select the exact tab and leave it foreground for native screenshot/input work. */
+  public async withTarget<T>(signal: AbortSignal, work: (identity: WindowIdentity) => Promise<T>,
+    expected?: WindowIdentity): Promise<T> {
+    const target = await this.focusTarget(signal, expected)
+    return work(target)
+  }
+  /** Focus the exact target for visual work, then restore the prior window/tab even when capture fails. */
+  public async withTemporaryTarget<T>(signal: AbortSignal, work: (identity: WindowIdentity) => Promise<T>,
+    expected?: WindowIdentity): Promise<T> {
+    if (!this.options.targetUrl) throw new SreError('TARGET_REQUIRED')
+    const original = await this.helper({ action: 'foreground-snapshot', browserProcesses: [...this.allowed] }, signal)
+    const tab = original.selectedTab
+    if (typeof original.hwnd !== 'string' || !validInteger(original.pid) || original.pid <= 0
+      || typeof original.processName !== 'string' || (tab !== null && tab !== undefined
+      && (typeof tab !== 'object' || !Array.isArray((tab as JsonRecord).runtimeId)
+        || (tab as { runtimeId: unknown[] }).runtimeId.length === 0
+        || !(tab as { runtimeId: unknown[] }).runtimeId.every(validInteger)))) throw new Error('Windows returned an invalid foreground snapshot.')
+    const snapshot: ForegroundSnapshot = { hwnd: original.hwnd, pid: original.pid,
+      processName: original.processName, selectedTab: tab === undefined ? null : tab as ForegroundSnapshot['selectedTab'] }
+    const target = await this.focusTarget(signal, expected)
+    try { return await work(target) }
+    finally {
+      const cleanup = new AbortController()
+      const timer = setTimeout(() => cleanup.abort(), this.options.timeoutMs)
+      try { await this.helper({ action: 'restore-foreground', original: snapshot, expected: target,
+        targetUrl: this.options.targetUrl }, cleanup.signal) }
+      finally { clearTimeout(timer) }
+    }
+  }
   private async scratchDirectory(): Promise<string> {
     this.scratch ??= (async () => { await mkdir(this.options.runtimeDir, { recursive: true }); const directory = await mkdtemp(join(this.options.runtimeDir, `${basename(this.options.runtimeDir)}-windows-`)); await chmod(directory, 0o700).catch(() => undefined); return directory })()
     return await this.scratch
@@ -209,7 +239,7 @@ export class WindowsDriver {
         typingIntervalMs: this.options.typingIntervalMs ?? 8, timeoutMs: this.options.timeoutMs }, signal)
     })
   }
-  /** A verified command receives exactly one Enter; failure does not permit automatic resubmission. */
+  /** Send one Enter to the focused terminal; failure leaves submission uncertain and forbids automatic replay. */
   public submitCommand(signal: AbortSignal): Promise<void> {
     return this.operation(async () => {
       const expected = await this.identityNow(signal)

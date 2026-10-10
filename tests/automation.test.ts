@@ -36,6 +36,19 @@ test('desktop driver forwards exact target and confines refocus to the bound bro
   } finally { await driver.dispose() }
 })
 
+test('target work does not request foreground restoration after a successful observation', async () => {
+  const actions: unknown[] = []
+  const driver = new WindowsDriver(options, async payload => {
+    actions.push(payload.action)
+    return { ok: true, ...identity }
+  })
+  try {
+    const result = await driver.withTarget(new AbortController().signal, async selected => selected.title)
+    assert.equal(result, identity.title)
+    assert.deepEqual(actions, ['focus-target'])
+  } finally { await driver.dispose() }
+})
+
 test('target mismatch or cancellation prevents input and releases driver resources', async () => {
   let calls = 0
   const driver = new WindowsDriver(options, async () => { calls++; throw new SreError('TARGET_MISMATCH') })

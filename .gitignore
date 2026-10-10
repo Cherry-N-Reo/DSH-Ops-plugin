@@ -8,7 +8,15 @@ operations/connections.tsv
 operations/connections.csv
 .env
 .env.*
+!.env.example
 *.log
+knowledge-service/.venv/
+knowledge-service/.data/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+operations/.rag-sync.json*
+operations/records/*.md
 # Host-specific configuration records may contain real infrastructure addresses.
 CONFIGURATION.md
 CONFIGURATION.zh.md

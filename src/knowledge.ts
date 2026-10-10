@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { parseDocument, type Document } from "yaml";
 
 /** A validated inventory entry. Credential values are references, never secrets. */
@@ -26,6 +27,21 @@ const ASSET_KEYS = new Set([
 const CREDENTIAL_REFERENCE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SENSITIVE_KEY = /(?:password|token|secret|api[_-]?key|private[_-]?key)/i;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$/;
+
+function documentStatus(path: string, text: string): "verified" | "failed" | "unverified" {
+  if (!path.startsWith("records/") || !text.startsWith("---\n")) return "unverified";
+  const end = text.indexOf("\n---\n", 4);
+  if (end < 0) return "unverified";
+  const frontmatter = parseDocument(text.slice(4, end), { uniqueKeys: true });
+  if (frontmatter.errors.length) return "unverified";
+  let data: unknown;
+  try { data = frontmatter.toJS({ maxAliasCount: 0 }) as unknown; }
+  catch { return "unverified"; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "unverified";
+  const fields = data as Record<string, unknown>;
+  if (fields["dsh-ops-record-version"] !== 1) return "unverified";
+  return fields.status === "success" ? "verified" : fields.status === "failure" ? "failed" : "unverified";
+}
 
 function fail(message: string): never {
   throw new Error(`Invalid inventory: ${message}`);
@@ -160,14 +176,16 @@ export function Knowledge(root: string, options: KnowledgeOptions = {}) {
       if (!found) throw new Error(`Unknown asset: ${id}`);
       return { ...found, services: [...found.services], runbooks: [...found.runbooks], credentials: { ...found.credentials } };
     },
-    async search(query: string): Promise<{ path: string; text: string; untrusted: true }[]> {
+    async search(query: string): Promise<{ path: string; text: string; contentHash: string; kind: "manual" | "record"; status: "verified" | "failed" | "unverified"; source: "local"; untrusted: true }[]> {
       if (typeof query !== "string" || query.length === 0 || query.length > 512) throw new Error("Search query must be 1-512 characters");
       const safeRoot = await realpath(rootPath);
-      const runbooks = await inside(safeRoot, join(safeRoot, "runbooks"));
-      if (!runbooks) return [];
-      const files = await markdownFiles(safeRoot, runbooks, maxResults);
+      const files: string[] = [];
+      for (const folder of ['runbooks', 'records']) {
+        const directory = await inside(safeRoot, join(safeRoot, folder));
+        if (directory) files.push(...await markdownFiles(safeRoot, directory, maxResults));
+      }
       const lowered = query.toLocaleLowerCase();
-      const matches: { path: string; text: string; untrusted: true }[] = [];
+      const matches: { path: string; text: string; contentHash: string; kind: "manual" | "record"; status: "verified" | "failed" | "unverified"; source: "local"; untrusted: true }[] = [];
       for (const file of files) {
         if (matches.length >= maxResults) break;
         const info = await stat(file);
@@ -176,7 +194,11 @@ export function Knowledge(root: string, options: KnowledgeOptions = {}) {
         if (text.toLocaleLowerCase().includes(lowered)) {
           const path = relative(safeRoot, file);
           if (isAbsolute(path)) continue;
-          matches.push({ path: path.replaceAll("\\", "/"), text: Buffer.from(text).subarray(0, maxText).toString('utf8'), untrusted: true });
+          const normalized = path.replaceAll("\\", "/");
+          matches.push({ path: normalized, text: Buffer.from(text).subarray(0, maxText).toString('utf8'),
+            contentHash: createHash("sha256").update(text).digest("hex"),
+            kind: normalized.startsWith("records/") ? "record" : "manual",
+            status: documentStatus(normalized, text), source: "local", untrusted: true });
         }
       }
       return matches;

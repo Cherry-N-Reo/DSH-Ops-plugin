@@ -6,10 +6,11 @@ import { Audit, hash } from '../src/audit.ts'
 import { Operator, type Identity } from '../src/operator.ts'
 import { InputFlow } from '../src/input.ts'
 import { directWebshell } from '../src/connections.ts'
+import type { TextOutput, TextOutputMarker } from '../src/browser-output.ts'
 
-async function fixture(writeAudit?: (event: Record<string, unknown>) => Promise<void>) {
+async function fixture(writeAudit?: (event: Record<string, unknown>) => Promise<void>, textOutput?: TextOutput) {
   const identity: Identity = { hwnd: '0x123', pid: 12, processName: 'chrome', title: 'terminal', rect: { x: 0, y: 0, width: 800, height: 600 } }
-  let shots = 0, enters = 0
+  let shots = 0, enters = 0, foregroundChecks = 0
   const typed: string[] = [], records: Record<string, unknown>[] = []
   const signal = new AbortController().signal
   const record = async (event: Record<string, unknown>) => { records.push(event); await writeAudit?.(event) }
@@ -20,10 +21,11 @@ async function fixture(writeAudit?: (event: Record<string, unknown>) => Promise<
   },
     type: async text => { typed.push(text) }, submit: async () => { enters++ },
     audit: record }, 3)
-  const operator = new Operator({ identity: async () => identity,
+  const operator = new Operator({ identity: async () => { foregroundChecks++; return identity },
+    focusTarget: async () => { foregroundChecks++; return identity },
     copy: async () => { throw new Error('No clipboard reading in visual mode') },
     paste: async () => { throw new Error('No clipboard paste in visual mode') }, scroll: async () => {},
-  }, { inputFlow: flow, freshnessMs: 1000, maxScreens: 3, outputPolls: 1,
+  }, { inputFlow: flow, textOutput, freshnessMs: 1000, maxScreens: 3, outputPolls: 1,
     now: () => 0, audit: record })
   await operator.bind('s', directWebshell('https://example.invalid', 'linux'), identity,
     { x: 10, y: 20, width: 600, height: 400 }, { screenWidth: 800, screenHeight: 600,
@@ -40,8 +42,34 @@ async function fixture(writeAudit?: (event: Record<string, unknown>) => Promise<
     const marker = operator.get('s').lastCommand!
     return `${marker.begin}\n${body}\n${marker.end} rc=0`
   }
-  return { operator, flow, signal, typed, records, enterCurrent, output, enters: () => enters }
+  return { operator, flow, signal, typed, records, enterCurrent, output, enters: () => enters,
+    foregroundChecks: () => foregroundChecks }
 }
+
+test('browser text output completes collection without an output screenshot', async () => {
+  let marker: TextOutputMarker | undefined, reads = 0, clears = 0
+  const textOutput: TextOutput = {
+    arm: async (_sessionId, value) => { marker = value; return true },
+    read: async () => {
+      reads++
+      return { available: true, complete: true, source: 'websocket', attempts: reads,
+        text: `${marker!.begin}\nentry\n${marker!.end} rc=0` }
+    },
+    clear: async () => { clears++ }, dispose: async () => {},
+  }
+  const f = await fixture(undefined, textOutput)
+  await f.operator.run('s', 'ls', 'read', async () => true, f.signal)
+  await f.enterCurrent()
+  const screenshotsAfterInput = f.records.filter(record => record.phase === 'terminal-evidence').length
+  const foregroundBeforeRead = f.foregroundChecks()
+  const result = await f.operator.collectText('s', f.signal)
+  assert.equal(result?.complete, true); assert.equal(result?.output, 'entry')
+  assert.equal(result?.source, 'websocket'); assert.equal(clears, 1)
+  assert.equal(f.records.filter(record => record.phase === 'terminal-evidence').length, screenshotsAfterInput)
+  assert.ok(f.records.some(record => record.phase === 'text-capture'))
+  assert.ok(f.records.some(record => record.phase === 'text-result'))
+  assert.equal(f.foregroundChecks(), foregroundBeforeRead)
+})
 
 test('visual read-only execution stays pending until exact echo and marker output without clipboard access', async () => {
   const f = await fixture()

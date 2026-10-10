@@ -3,6 +3,7 @@ import { classify } from './policy.ts'
 import { markers, collect, extract, type Calibration, type Viewport } from './terminal.ts'
 import type { Asset } from './knowledge.ts'
 import type { InputFlow } from './input.ts'
+import type { TextOutput } from './browser-output.ts'
 import { SreError } from './errors.ts'
 
 export interface Rect { x: number; y: number; width: number; height: number }
@@ -13,12 +14,15 @@ export interface Desktop {
   copy(rect: Rect, signal: AbortSignal): Promise<string>
   paste(rect: Rect, text: string, submit: boolean, signal: AbortSignal): Promise<void>
   scroll(rect: Rect, ticks: number, signal: AbortSignal): Promise<void>
+  typeCommand?(rect: Rect, text: string, mode: 'unicode', signal: AbortSignal): Promise<void>
+  submitCommand?(signal: AbortSignal): Promise<void>
 }
 export interface Binding {
   id: string; asset: Asset; identity: Identity; rect: Rect; viewport: Viewport
   createdAt: number; calibration?: Calibration; secretPending: boolean; uncertain: boolean
   pagerPatterns: string[]
   inventoryTracked: boolean
+  directPending?: boolean
   lastCommand?: { begin: string; end: string; hash: string; risk: string }
   critical?: { command: string; details: Record<string, unknown>; phase: 'before-final' | 'after-final';
     environment?: { currentUser: string; cwd: string }; hash: string }
@@ -55,13 +59,18 @@ export class Operator {
     audit: (event: Record<string, unknown>) => Promise<void>; now?: () => number
     assetCurrent?: (id: string) => Promise<Asset>
     inputFlow?: InputFlow
+    textOutput?: TextOutput
   }) {}
   private now(): number { return this.options.now?.() ?? Date.now() }
   async fresh(binding: Binding, signal: AbortSignal): Promise<void> {
-    signal.throwIfAborted()
-    if (this.now() - binding.createdAt > this.options.freshnessMs) throw new Error('Observation expired. Observe and bind again.')
+    await this.freshBackground(binding, signal)
     await this.desktop.focusTarget?.(signal, binding.identity)
     if (!sameWindow(binding.identity, await this.desktop.identity(signal))) throw new Error('Browser identity or geometry changed. Observe and bind again.')
+  }
+  /** Validate recorded binding state without changing the foreground during browser text collection. */
+  async freshBackground(binding: Binding, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted()
+    if (this.now() - binding.createdAt > this.options.freshnessMs) throw new Error('Observation expired. Observe and bind again.')
     if (binding.inventoryTracked && this.options.assetCurrent && JSON.stringify(binding.asset) !== JSON.stringify(await this.options.assetCurrent(binding.asset.id))) throw new Error('Inventory changed. Bind the asset again.')
     validateRect(binding.rect, binding.identity.rect)
   }
@@ -72,9 +81,10 @@ export class Operator {
     return binding
   }
   async bind(sessionId: string, asset: Asset, identity: Identity, rect: Rect, viewport: Viewport,
-    approve: Approval, signal: AbortSignal, inventoryTracked = true): Promise<Binding> {
+    approve: Approval, signal: AbortSignal, inventoryTracked = true, targetUrl = ''): Promise<Binding> {
     validateRect(rect, identity.rect)
-    if (!await approve('bind', JSON.stringify({ asset: asset.id, browser: identity, terminal: rect }))) throw new Error('Asset binding denied.')
+    if (!await approve('bind', JSON.stringify({ asset: asset.id, url: targetUrl, browser: identity, terminal: rect,
+      confirmation: 'Verify the shell has an idle prompt and an empty editable line before enabling automatic Enter.' }))) throw new Error('Asset binding denied.')
     if (!sameWindow(identity, await this.desktop.identity(signal))) throw new Error('Browser changed while approving binding.')
     const binding: Binding = { id: randomUUID(), asset, identity, rect, viewport,
       createdAt: this.now(), secretPending: false, uncertain: false, inventoryTracked, pagerPatterns: ['--More--', '(END)'] }
@@ -133,6 +143,44 @@ export class Operator {
     const result = await this.collectPending(sessionId, signal)
     return { ...result, risk: decision.risk, commandHash: decision.hash, untrusted: true }
   }
+  /** Type once with Unicode packets and submit once; a helper failure locks the binding against replay. */
+  async sendDirect(sessionId: string, command: string, intent: string, approve: Approval,
+    signal: AbortSignal, marked: boolean) {
+    const binding = this.get(sessionId)
+    if (binding.uncertain && !binding.directPending) throw new Error('Prior input or outcome is uncertain. Inspect and rebind; do not retry.')
+    if (binding.critical) throw new Error('Resolve the pending critical action before writing again.')
+    await this.fresh(binding, signal)
+    const decision = classify(command, binding.asset)
+    if (decision.risk === 'R4') throw new Error('R4 requires sre_request_critical_action.')
+    await this.options.audit({ sessionId, assetId: binding.asset.id, terminalSession: binding.id,
+      commandHash: decision.hash, risk: decision.risk, phase: 'classified' })
+    if (decision.risk === 'R2' || decision.risk === 'R3') {
+      if (!await approve('intent', JSON.stringify({ sessionId, asset: binding.asset.id,
+        terminalSession: binding.id, command: decision.normalized, commandHash: decision.hash,
+        targets: decision.targets, intent }))) throw new Error('Action intent denied.')
+      await this.fresh(binding, signal)
+    }
+    if (!this.desktop.typeCommand || !this.desktop.submitCommand) throw new Error('Direct Unicode input is unavailable.')
+    const previousMarked = !!binding.lastCommand
+    const marker = marked ? markers(decision.normalized, randomUUID().replaceAll('-', '')) : undefined
+    if (marker) await this.options.textOutput?.arm(sessionId, marker, signal)
+    else if (!binding.directPending || previousMarked) await this.options.textOutput?.arm(sessionId, { begin: '', end: '' }, signal)
+    const text = marker?.wrapped ?? decision.normalized
+    binding.uncertain = true
+    binding.directPending = false
+    binding.lastCommand = marker ? { begin: marker.begin, end: marker.end, hash: decision.hash, risk: decision.risk } : undefined
+    await this.options.audit({ sessionId, assetId: binding.asset.id, terminalSession: binding.id,
+      commandHash: decision.hash, risk: decision.risk, phase: 'attempt', outcome: 'unknown' })
+    await this.desktop.typeCommand(binding.rect, text, 'unicode', signal)
+    await this.freshBackground(binding, signal)
+    if (!sameWindow(binding.identity, await this.desktop.identity(signal))) throw new Error('Browser changed after typing. Inspect the terminal and rebind.')
+    await this.desktop.submitCommand(signal)
+    binding.directPending = true
+    await this.options.audit({ sessionId, assetId: binding.asset.id, terminalSession: binding.id,
+      commandHash: decision.hash, risk: decision.risk, phase: 'submitted', outcome: 'allowed' })
+    return { submitted: true, risk: decision.risk, commandHash: decision.hash,
+      terminalSession: binding.id, complete: false, untrusted: true }
+  }
   private async stageVisual(sessionId: string, binding: Binding, command: string, hash: string,
     risk: string, signal: AbortSignal) {
     await this.fresh(binding, signal)
@@ -141,6 +189,10 @@ export class Operator {
     binding.uncertain = true
     await this.options.audit({ sessionId, assetId: binding.asset.id, terminalSession: binding.id,
       commandHash: hash, risk, phase: binding.critical ? 'critical-environment-probe' : 'attempt', outcome: 'unknown' })
+    const textCapture = await this.options.textOutput?.arm(sessionId, marker, signal) ?? false
+    if (this.options.textOutput) await this.options.audit({ sessionId, assetId: binding.asset.id,
+      terminalSession: binding.id, commandHash: hash, risk, phase: 'text-capture',
+      outcome: textCapture ? 'allowed' : 'unavailable', source: 'browser' })
     const input = await this.options.inputFlow!.start(sessionId, marker.wrapped, signal)
     return { ...input, output: '', exitCode: null, complete: false, truncated: false,
       screens: 1, reason: binding.critical ? 'verify remote environment for critical action' : 'awaiting visual input verification',
@@ -163,17 +215,21 @@ export class Operator {
       commandHash: marker.hash, risk: marker.risk, phase: 'result', outputHash: classifyHash(result.output),
       exitCode: result.exitCode, outcome: result.complete ? 'complete' : 'unknown' })
     binding.uncertain = !result.complete
+    if (result.complete) binding.directPending = false
     return { ...result, risk: marker.risk, commandHash: marker.hash, untrusted: true }
   }
   /** Marker verification never executes a command; screenshots and transcription remain untrusted evidence. */
-  async acceptVisualOutput(sessionId: string, text: string, signal: AbortSignal, approve?: Approval) {
+  async acceptVisualOutput(sessionId: string, text: string, signal: AbortSignal, approve?: Approval,
+    source: 'screenshot' | 'websocket' | 'xterm-buffer' | 'dom' = 'screenshot') {
     const binding = this.get(sessionId), marker = binding.lastCommand
     if (!marker || this.options.inputFlow?.has(sessionId)) throw new Error('Verify and submit pending input before collecting output.')
-    await this.fresh(binding, signal)
+    await this.freshBackground(binding, signal)
     const result = extract(text, marker.begin, marker.end)
     await this.options.audit({ sessionId, assetId: binding.asset.id, terminalSession: binding.id,
-      commandHash: marker.hash, risk: marker.risk, phase: 'visual-result', outputHash: classifyHash(text),
-      exitCode: result.exitCode, outcome: result.complete ? 'complete' : 'unknown' })
+      commandHash: marker.hash, risk: marker.risk, phase: source === 'screenshot' ? 'visual-result' : 'text-result',
+      source, outputHash: classifyHash(text), exitCode: result.exitCode,
+      outcome: result.complete ? 'complete' : 'unknown' })
+    if (result.complete) await this.options.textOutput?.clear(sessionId)
     binding.uncertain = !result.complete
     if (result.complete) this.options.inputFlow?.clear(sessionId)
     if (result.complete && binding.critical) {
@@ -195,9 +251,25 @@ export class Operator {
       binding.critical = undefined
       return this.stageVisual(sessionId, binding, plan.command, plan.hash, 'R4', signal)
     }
-    return { ...result, output: result.complete ? result.output : text, truncated: false,
+    return { ...result, output: result.complete ? result.output : text, truncated: false, source,
       reason: result.complete ? 'complete' : 'visual marker record incomplete; do not resubmit',
       risk: marker.risk, commandHash: marker.hash, untrusted: true }
+  }
+  /** Try browser text collection before asking the model to read a screenshot. */
+  async collectText(sessionId: string, signal: AbortSignal, approve?: Approval) {
+    const binding = this.get(sessionId), marker = binding.lastCommand
+    if (!marker || !this.options.textOutput) return undefined
+    if (this.options.inputFlow?.has(sessionId)) throw new Error('Verify and submit pending input before collecting output.')
+    await this.freshBackground(binding, signal)
+    const reading = await this.options.textOutput.read(sessionId, marker, signal)
+    if (reading.complete && reading.source) {
+      return this.acceptVisualOutput(sessionId, reading.text, signal, approve, reading.source)
+    }
+    if (!reading.available) return undefined
+    return { output: '', exitCode: null, complete: false, truncated: false, screens: 0,
+      reason: 'browser text output is not complete yet; collect again without resubmitting',
+      attempts: reading.attempts, source: reading.source ?? 'browser', risk: marker.risk,
+      commandHash: marker.hash, untrusted: true }
   }
   private async environment(binding: Binding, signal: AbortSignal): Promise<{ currentUser: string; cwd: string }> {
     await this.fresh(binding, signal)

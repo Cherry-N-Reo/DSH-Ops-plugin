@@ -40,6 +40,18 @@ test('direct WebShell binding and read-only execution do not load inventory', as
   const result = await f.op.run('session', 'kubectl get nodes -o wide', 'inspect nodes', async () => { throw new Error('unexpected read-only approval') }, f.signal)
   assert.equal(result.complete, true); assert.equal(f.submitted(), 1)
 })
+test('binding approval identifies the exact configured URL and selected tab', async () => {
+  const f = fixture()
+  const url = 'https://example.invalid/shell?server=one'
+  let details = ''
+  await f.op.bind('session', directWebshell(url, 'linux'), identity,
+    { x: 0, y: 0, width: 700, height: 400 }, viewport,
+    async (_phase, value) => { details = value; return true }, f.signal, false, url)
+  const approval = JSON.parse(details)
+  assert.equal(approval.url, url)
+  assert.equal(approval.browser.title, identity.title)
+  assert.match(approval.confirmation, /empty editable line/)
+})
 test('single-screen read command is complete, audited, and has no approval', async () => {
   const f = await bound()
   const result = await f.op.run('session', 'pwd', 'inspect', async () => { throw new Error('unexpected approval') }, f.signal)

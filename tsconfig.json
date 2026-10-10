@@ -3,7 +3,7 @@
     "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext",
     "strict": true, "noImplicitAny": true, "skipLibCheck": true,
     "rewriteRelativeImportExtensions": true, "outDir": "lib", "rootDir": "src",
-    "declaration": true, "types": ["node"]
+    "declaration": true, "jsx": "react-jsx", "types": ["node", "react"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

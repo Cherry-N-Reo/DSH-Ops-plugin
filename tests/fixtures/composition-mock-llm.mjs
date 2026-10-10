@@ -5,10 +5,9 @@ const calls = process.env.DSH_COMPOSITION_GUARD === '1'
   : [
       ['asset_lookup', { id: 'sample-web-staging' }],
       ['runbook_search', { query: 'nginx' }],
-      ['terminal_execute', { command: 'rm -rf /', reason: 'test the disabled terminal guard' }],
+      ['terminal_run', { command: 'rm -rf /', reason: 'test the disabled terminal guard' }],
       ['connection_list', {}],
-      ['terminal_input_check', { observationId: 'fixture-observation', inputText: '', idlePrompt: true,
-        fullInputVisible: true, candidateVisible: false, confident: true }],
+      ['terminal_write', { command: 'pwd', reason: 'test the disabled terminal guard' }],
       ['terminal_scroll', { ticks: 1 }],
     ]
 

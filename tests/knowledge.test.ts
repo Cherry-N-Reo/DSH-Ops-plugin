@@ -24,6 +24,26 @@ test("loads assets and searches contained Markdown", async () => {
       services: ["nginx"], runbooks: ["runbooks/nginx.md"], credentials: { deploy: "SAMPLE_WEB_DEPLOY" },
     });
     assert.equal((await knowledge.search("restart"))[0]?.untrusted, true);
+    const runbook = (await knowledge.search("restart"))[0];
+    assert.equal(runbook?.kind, "manual");
+    assert.equal(runbook?.status, "unverified");
+    assert.equal(runbook?.source, "local");
+    assert.match(runbook?.contentHash ?? "", /^[a-f0-9]{64}$/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("local record retrieval preserves verified, failed, and uncertain outcomes", async () => {
+  const root = await fixture();
+  try {
+    await mkdir(join(root, "records"));
+    for (const [file, status] of [["ok", "success"], ["bad", "failure"], ["unknown", "uncertain"]]) {
+      await writeFile(join(root, "records", `${file}.md`), `---\ndsh-ops-record-version: 1\nstatus: ${status}\n---\n\n# restart ${file}\n`);
+    }
+    const results = await Knowledge(root).search("restart");
+    assert.equal(results.find(row => row.path === "records/ok.md")?.status, "verified");
+    assert.equal(results.find(row => row.path === "records/bad.md")?.status, "failed");
+    assert.equal(results.find(row => row.path === "records/unknown.md")?.status, "unverified");
+    assert.equal(results.filter(row => row.kind === "record").length, 3);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

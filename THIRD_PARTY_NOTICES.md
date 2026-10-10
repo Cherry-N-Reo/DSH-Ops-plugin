@@ -14,6 +14,10 @@ The reviewed scripts use Win32 input and System.Drawing screenshots. They do not
 
 Inventory parsing uses `yaml` 2.9.0 (ISC license), already pinned by the DSH dependency installation. No vector database or secret-storage package is added.
 
+## Playwright
+
+Managed-browser mode uses `playwright` 1.61.1 (Apache-2.0 license) to launch a persistent Chromium profile and communicate with its pages over a private browser connection. Browser binaries are supplied by the operator's Chrome/Edge installation or Playwright's separate browser installation; the plugin does not bundle them.
+
 ## Upgrade policy
 
 No dependency follows `latest`. Upgrade only after reviewing source and rerunning policy, approval, lifecycle, Copy/Paste, scroll continuity, DPI and target-browser acceptance. The real WebShell tests are separate from keyless/mock-driver tests.

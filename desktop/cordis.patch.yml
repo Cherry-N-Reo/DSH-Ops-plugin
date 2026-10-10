@@ -1,0 +1,13 @@
+- insert:
+    - id: sre-webshell
+      name: dsh-sre-webshell
+      config:
+        browserMode: desktop
+        desktopTransport: client
+        enabled: false
+        targetUrl: ''
+        operationsDir: !!js (process.env.DSH_OPS_HOME || process.env.DSH_HOME || process.env.USERPROFILE || process.env.HOME) + '/ops/operations'
+        runtimeDir: !!js (process.env.DSH_OPS_HOME || process.env.DSH_HOME || process.env.USERPROFILE || process.env.HOME) + '/ops/runtime'
+        autoScreenshot: true
+        allowCritical: false
+        allowCredentialInjection: false

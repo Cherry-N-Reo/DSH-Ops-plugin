@@ -1,0 +1,14 @@
+{
+  "item": {
+    "path": "records/nginx-check.md",
+    "text": "nginx checked",
+    "title": "Nginx check",
+    "section": "",
+    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "kind": "record",
+    "status": "unverified",
+    "untrusted": true,
+    "source": "rag"
+  },
+  "outageWarnings": ["RAG unavailable; only local Markdown results are available."]
+}

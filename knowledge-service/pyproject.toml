@@ -1,0 +1,21 @@
+[project]
+name = "dsh-ops-knowledge"
+version = "0.1.0"
+description = "Independent Markdown knowledge API for DSH Ops"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
+  "psycopg[binary]>=3.2,<4",
+  "rank-bm25==0.2.2", "jieba==0.42.1", "pydantic-settings>=2.8,<3",
+  "python-dotenv>=1,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

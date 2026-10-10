@@ -41,7 +41,9 @@ test('built plugin boots in a real authenticated Web profile on an OS-assigned p
     assert.ok(cookie)
     const authorized = await fetch(parsed.origin, { headers: { cookie }, signal: AbortSignal.timeout(5000) })
     assert.equal(authorized.status, 200)
-    assert.match(await authorized.text(), /<html/i)
+    const html = await authorized.text()
+    assert.match(html, /<html/i)
+    assert.match(html, /dsh-sre-webshell\/client\.js/)
     assert.doesNotMatch(errorOutput, /failed|error|unresolved|requires Windows/i)
   } finally {
     clearTimeout(deadline)

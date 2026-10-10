@@ -53,22 +53,25 @@ public static class DshKeys {
   static void Send(IN[] inputs) { if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(IN))) != inputs.Length) throw new InvalidOperationException("Input was not fully accepted."); }
   static void Guard(IntPtr h) { if (DshWin.GetForegroundWindow()!=h) throw new InvalidOperationException("Focus changed."); }
   static void NoModifiers() { foreach(int k in new int[]{16,17,18,91,92}) if ((GetAsyncKeyState(k)&0x8000)!=0) throw new InvalidOperationException("A modifier is held."); }
-  static IntPtr Prepare(IntPtr h, uint timeout) {
-    Guard(h); NoModifiers(); uint p; uint thread=DshWin.GetWindowThreadProcessId(h,out p);
+  static IntPtr Prepare(IntPtr h, string mode, uint timeout) {
+    Guard(h); NoModifiers(); uint p;
     GI info=new GI(); info.size=(uint)Marshal.SizeOf(typeof(GI));
-    if (!GetGUIThreadInfo(thread,ref info) || info.focus==IntPtr.Zero) throw new InvalidOperationException("No focused input.");
+    if (!GetGUIThreadInfo(0,ref info) || info.focus==IntPtr.Zero) throw new InvalidOperationException("No focused input.");
     uint inputThread=DshWin.GetWindowThreadProcessId(info.focus,out p);
-    IntPtr layout=LoadKeyboardLayout("00000409",0); if (layout==IntPtr.Zero) throw new InvalidOperationException("US layout unavailable.");
-    UIntPtr result;
-    if (SendMessageTimeout(info.focus,0x50,UIntPtr.Zero,layout,2,timeout,out result)==IntPtr.Zero) throw new InvalidOperationException("Layout change unavailable.");
-    if ((GetKeyboardLayout(inputThread).ToInt64()&0xffff)!=0x0409) throw new InvalidOperationException("English layout not confirmed.");
+    IntPtr layout=IntPtr.Zero;
+    if (mode=="keyboard") {
+      layout=LoadKeyboardLayout("00000409",0); if (layout==IntPtr.Zero) throw new InvalidOperationException("US layout unavailable.");
+      UIntPtr result;
+      if (SendMessageTimeout(info.focus,0x50,UIntPtr.Zero,layout,2,timeout,out result)==IntPtr.Zero) throw new InvalidOperationException("Layout change unavailable.");
+      if ((GetKeyboardLayout(inputThread).ToInt64()&0xffff)!=0x0409) throw new InvalidOperationException("English layout not confirmed.");
+    }
     IntPtr context=ImmGetContext(info.focus);
     if (context!=IntPtr.Zero) { try { ImmSetOpenStatus(context,false); ImmSetConversionStatus(context,0,0); if (ImmGetOpenStatus(context)) throw new InvalidOperationException("IME remains open."); } finally { ImmReleaseContext(info.focus,context); } }
     Guard(h); return layout;
   }
   public static void Type(IntPtr h, string text, string mode, int interval, uint timeout) {
-    IntPtr layout=Prepare(h,timeout);
     if (mode!="unicode" && mode!="keyboard") throw new InvalidOperationException("Unknown input mode.");
+    IntPtr layout=Prepare(h,mode,timeout);
     if (mode=="keyboard") foreach(char c in text) { short key=VkKeyScanEx(c,layout); if(c<32 || c>126 || key==-1 || ((key>>8)&~1)!=0) throw new InvalidOperationException("Unsupported physical key."); }
     foreach(char c in text) {
       Guard(h); NoModifiers();
@@ -127,13 +130,62 @@ public static class DshKeys {
     } catch { return $false }
     return $false
   }
+  function SelectedTab($handle) {
+    $owner = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $tabs = @(NativeControls $owner ([System.Windows.Automation.ControlType]::TabItem) | Where-Object { NativeChromeElement $_ $owner })
+    for ($i = 0; $i -lt $tabs.Count; $i++) {
+      $selection = $null
+      if ($tabs[$i].TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection) -and $selection.Current.IsSelected) {
+        return @{ runtimeId = @($tabs[$i].GetRuntimeId()) }
+      }
+    }
+    return $null
+  }
+  function RestoreTab($handle, $saved) {
+    if ($null -eq $saved) { return $false }
+    $owner = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $tabs = @(NativeControls $owner ([System.Windows.Automation.ControlType]::TabItem) | Where-Object { NativeChromeElement $_ $owner })
+    $wanted = @($saved.runtimeId) -join ','
+    if ($wanted.Length -eq 0) { return $false }
+    foreach ($tab in $tabs) {
+      if ((@($tab.GetRuntimeId()) -join ',') -ne $wanted) { continue }
+      $selection = $null
+      if (-not $tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) { return $false }
+      $selection.Select()
+      return $true
+    }
+    return $false
+  }
   $target = $null
   if (-not [string]::IsNullOrEmpty([string]$cfg.targetUrl)) {
     $target = [Uri][string]$cfg.targetUrl
     if (-not $target.IsAbsoluteUri -or @('http','https') -notcontains $target.Scheme -or -not [string]::IsNullOrEmpty($target.UserInfo)) { Fail 'TARGET_MISMATCH' }
   }
+  if ($cfg.action -eq 'foreground-snapshot') {
+    $original = [DshWin]::GetForegroundWindow(); if ($original -eq [IntPtr]::Zero) { Fail 'FOCUS_FAILED' }
+    $originalPid = [uint32]0; [DshWin]::GetWindowThreadProcessId($original, [ref]$originalPid) | Out-Null
+    $originalProcess = Get-Process -Id $originalPid -ErrorAction Stop
+    $selected = if (@($cfg.browserProcesses | ForEach-Object { ([string]$_).ToLowerInvariant() }) -contains $originalProcess.ProcessName.ToLowerInvariant()) { SelectedTab $original } else { $null }
+    Reply @{ hwnd = ('0x{0:X}' -f $original.ToInt64()); pid = [int]$originalPid; processName = $originalProcess.ProcessName; selectedTab = $selected }
+  }
+  if ($cfg.action -eq 'restore-foreground') {
+    if ($null -eq $cfg.original -or $null -eq $cfg.expected) { Fail 'FOCUS_FAILED' }
+    $current = [DshWin]::GetForegroundWindow()
+    $currentPid = [uint32]0; [DshWin]::GetWindowThreadProcessId($current, [ref]$currentPid) | Out-Null
+    $currentProcess = Get-Process -Id $currentPid -ErrorAction Stop
+    if (('0x{0:X}' -f $current.ToInt64()) -ne [string]$cfg.expected.hwnd -or [int]$currentPid -ne [int]$cfg.expected.pid -or $currentProcess.ProcessName -ne [string]$cfg.expected.processName -or -not (TargetMatches $current)) { Fail 'RESTORE_UNAVAILABLE' }
+    $original = [IntPtr][Convert]::ToInt64(([string]$cfg.original.hwnd).Substring(2), 16)
+    $originalPid = [uint32]0; [DshWin]::GetWindowThreadProcessId($original, [ref]$originalPid) | Out-Null
+    $originalProcess = Get-Process -Id $originalPid -ErrorAction Stop
+    if ([int]$originalPid -ne [int]$cfg.original.pid -or $originalProcess.ProcessName -ne [string]$cfg.original.processName) { Fail 'RESTORE_UNAVAILABLE' }
+    if ($original -eq $current -and $null -ne $cfg.original.selectedTab -and -not (RestoreTab $original $cfg.original.selectedTab)) { Fail 'RESTORE_UNAVAILABLE' }
+    if (-not [DshWin]::Focus($original)) { Fail 'RESTORE_UNAVAILABLE' }
+    Reply @{}
+  }
   if ($cfg.action -eq 'focus-target') {
     if ($null -eq $target) { Fail 'TARGET_REQUIRED' }
+    $initialWindow = [DshWin]::GetForegroundWindow()
+    $focusCandidate = [IntPtr]::Zero; $focusSelected = $null
     $allowed = @($cfg.browserProcesses | ForEach-Object { ([string]$_).ToLowerInvariant() })
     $found = $false; $attempts = 0; $browserCandidates = 0; $focusedWindows = 0
     foreach ($candidate in [DshWin]::Windows()) {
@@ -147,10 +199,16 @@ public static class DshKeys {
       if ([DshWin]::GetForegroundWindow() -ne $candidate) { continue }
       $focusedWindows++
       if (TargetMatches $candidate) { $found = $true; break }
+      $selectedBefore = SelectedTab $candidate
+      if ($null -eq $selectedBefore) { continue }
+      $focusCandidate = $candidate; $focusSelected = $selectedBefore
       $owner = [System.Windows.Automation.AutomationElement]::FromHandle($candidate)
       foreach ($tab in (NativeControls $owner ([System.Windows.Automation.ControlType]::TabItem))) {
         if (-not (NativeChromeElement $tab $owner) -or -not $tab.Current.IsEnabled) { continue }
-        $attempts++; if ($attempts -gt 64) { Fail 'TARGET_NOT_FOUND' }
+        $attempts++; if ($attempts -gt 64) {
+          if (-not (RestoreTab $candidate $selectedBefore) -or -not [DshWin]::Focus($initialWindow)) { Fail 'RESTORE_UNAVAILABLE' }
+          Fail 'TARGET_NOT_FOUND'
+        }
         $selection = $null
         if (-not $tab.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) { continue }
         $selection.Select()
@@ -162,8 +220,10 @@ public static class DshKeys {
         if ($found) { break }
       }
       if ($found) { break }
+      if (-not (RestoreTab $candidate $selectedBefore)) { Fail 'RESTORE_UNAVAILABLE' }
     }
     if (-not $found) {
+      if (-not [DshWin]::Focus($initialWindow)) { Fail 'RESTORE_UNAVAILABLE' }
       if ($browserCandidates -gt 0 -and $focusedWindows -eq 0) { Fail 'FOCUS_FAILED' }
       Fail 'TARGET_NOT_FOUND'
     }
@@ -240,4 +300,18 @@ public static class DshKeys {
     Fail
   }
   Fail
-} catch { Fail }
+} catch {
+  if ($cfg.action -eq 'focus-target' -and $null -ne $initialWindow) {
+    try {
+      if ($focusCandidate -ne [IntPtr]::Zero -and $null -ne $focusSelected -and -not (RestoreTab $focusCandidate $focusSelected)) { Fail 'RESTORE_UNAVAILABLE' }
+      if (-not [DshWin]::Focus($initialWindow)) { Fail 'RESTORE_UNAVAILABLE' }
+    } catch { Fail 'RESTORE_UNAVAILABLE' }
+  }
+  if ($cfg.action -eq 'command-input') {
+    $failure = $_.Exception.ToString()
+    if ($failure.Contains('No focused input.')) { Fail 'INPUT_FOCUS_UNAVAILABLE' }
+    if ($failure.Contains('US layout unavailable.') -or $failure.Contains('Layout change unavailable.') -or $failure.Contains('English layout not confirmed.')) { Fail 'INPUT_LAYOUT_UNAVAILABLE' }
+    if ($failure.Contains('IME remains open.')) { Fail 'INPUT_IME_OPEN' }
+  }
+  Fail
+}

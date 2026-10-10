@@ -2,4 +2,5 @@
   config:
     operationsDir: !!js process.env.DSH_COMPOSITION_OPERATIONS_DIR
     runtimeDir: !!js process.env.DSH_COMPOSITION_SESSION_ROOT
+    browserMode: native
     enabled: true

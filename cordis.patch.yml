@@ -9,4 +9,5 @@
       config:
         operationsDir: 'D:/Program Files/DSH/sre-webshell/operations'
         runtimeDir: 'D:/Program Files/DSH/sre-webshell/.runtime'
+        browserMode: managed
         enabled: false

@@ -10,6 +10,7 @@
     runtimeDir: !!js process.env.DSH_COMPOSITION_SESSION_ROOT
     connectionsFile: !!js process.env.DSH_COMPOSITION_CONNECTIONS_FILE
     enabled: false
+    ragUrl: !!js process.env.DSH_COMPOSITION_RAG_URL || ''
 - id: session-persistence-jsonl
   config:
     root: !!js process.env.DSH_COMPOSITION_SESSION_ROOT

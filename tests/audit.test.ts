@@ -45,9 +45,10 @@ test("accepts visual input metadata and rejects unbounded counts, modes, phases,
   const root = await mkdtemp(join(runtime, "audit-input-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, "audit.jsonl"), writer = Audit(path);
-  for (const phase of ["terminal-evidence", "input-attempt", "input-verified", "input-helper-failure", "critical-environment-probe", "visual-result"]) {
+  for (const phase of ["terminal-evidence", "input-attempt", "input-verified", "input-helper-failure", "critical-environment-probe", "visual-result", "text-capture", "text-result"]) {
     await writer.record({ sessionId: "s", phase, attempts: 3, mode: "unicode" });
   }
+  await writer.record({ sessionId: "s", phase: "text-result", source: "websocket", outcome: "complete" });
   await writer.record({ sessionId: "s", phase: "input-attempt", attempts: 0, mode: "keyboard" });
   for (const attempts of [-1, 4, 1.5, "3", null]) {
     await assert.rejects(writer.record({ sessionId: "s", phase: "input-attempt", attempts, mode: "unicode" }), /attempts/);
@@ -60,10 +61,10 @@ test("accepts visual input metadata and rejects unbounded counts, modes, phases,
   const after = await readFile(path, "utf8");
   assert.ok(after.startsWith(before));
   const rows = after.trim().split("\n").map(line => JSON.parse(line) as Record<string, unknown>);
-  assert.equal(rows.length, 8);
+  assert.equal(rows.length, 11);
   for (let i = 1; i < rows.length; i++) assert.equal(rows[i].previousHash, rows[i - 1].hash);
   const replayPath = join(root, "replay.jsonl");
   await writeFile(replayPath, after);
   await Audit(replayPath).record({ sessionId: "s", phase: "input-verified", attempts: 3, mode: "keyboard" });
-  assert.equal((await readFile(replayPath, "utf8")).trim().split("\n").length, 9);
+  assert.equal((await readFile(replayPath, "utf8")).trim().split("\n").length, 12);
 });
